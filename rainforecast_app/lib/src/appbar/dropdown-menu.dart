@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../login/login.dart';
+import '../map/map_with_login.dart';
+
 
 class MapMenu extends StatefulWidget {
   const MapMenu({super.key});
@@ -59,13 +62,31 @@ class _MapMenuState extends State<MapMenu> {
                 const SizedBox(height: 10),
                 
                 // ปุ่ม User
-                IconButton(
+                // IconButton(
+                //   onPressed: () {
+                //      print("กด เข้าสู่ระบบแอดมิน");
+                //   },
+                //   icon: const Icon(Icons.manage_accounts, color: Colors.white, size: 30),
+                // ),
+                // const SizedBox(height: 20),
+
+               IconButton(
                   onPressed: () {
-                     print("กด เข้าสู่ระบบแอดมิน");
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MapWithLogin(),
+                      ),
+                    );
                   },
-                  icon: const Icon(Icons.manage_accounts, color: Colors.white, size: 30),
+                  icon: const Icon(
+                    Icons.manage_accounts,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
-                const SizedBox(height: 20),
+
+
                 
                 IconButton(
                   onPressed: () {
