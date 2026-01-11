@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:rainforecast_app/src/admin/addminpage.dart';
+
 
 class AdminLoginOverlay extends StatelessWidget {
   const AdminLoginOverlay({super.key});
@@ -43,7 +45,13 @@ class AdminLoginOverlay extends StatelessWidget {
                 backgroundColor: Colors.red,
               ),
               onPressed: () {
-                debugPrint('Admin Login');
+                // ✅ กดแล้วเข้า Dashboard ทันที
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AdminDashboardPage(),
+                  ),
+                );
               },
               child: const Text('Sign In'),
             ),
