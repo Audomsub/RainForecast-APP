@@ -45,7 +45,7 @@ class AdminLoginOverlay extends StatelessWidget {
                 backgroundColor: Colors.red,
               ),
               onPressed: () {
-                // ✅ กดแล้วเข้า Dashboard ทันที
+                
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(

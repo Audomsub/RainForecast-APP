@@ -11,18 +11,14 @@ class MapWithLogin extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          ///  แผนที่ 
-          const MainMap(),
+          ///  แผนที่
+          MainMap(searchText: ""),
 
-          ///  ฉากมืดโปร่งใส 
-          Container(
-            color: Colors.black.withOpacity(0.25),
-          ),
+          ///  ฉากมืดโปร่งใส
+          Container(color: Colors.black.withOpacity(0.25)),
 
           ///  Login Overlay
-          const Center(
-            child: AdminLoginOverlay(),
-          ),
+          const Center(child: AdminLoginOverlay()),
         ],
       ),
     );
