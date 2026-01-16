@@ -9,6 +9,7 @@ import 'package:rainforecast_app/src/legend/legendBar.dart';
 import 'package:rainforecast_app/src/legend/legendPopuo.dart';
 import 'package:rainforecast_app/src/popup/alertPopup.dart';
 import 'package:rainforecast_app/src/popup/weatherPopup.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -35,12 +36,20 @@ class Homepage extends StatefulWidget {
 class _HomepageState extends State<Homepage> {
   // สถานะสำหรับโชว์ Legend (ตารางสี)
   bool _showLegend = false;
-  
+
   // สถานะ Popup สภาพอากาศ (ก้อนเมฆ)
-  bool _showWeatherPopup = false; 
+  bool _showWeatherPopup = false;
 
   // สถานะ Popup แจ้งเตือน (กระดิ่ง) <--- เพิ่มตัวนี้
   bool _showAlertPopup = false;
+
+  String _searchText = "";
+  void _searchLocation(String keyword) {
+  debugPrint("Search keyword: $keyword");
+  // ตอนนี้แค่ส่งค่าให้ MainMap ผ่าน _searchText ก็พอ
+}
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -49,37 +58,47 @@ class _HomepageState extends State<Homepage> {
         children: [
           // --- 1. แผนที่ ---
           Positioned.fill(
-            child: const MainMap(),
-          ),
+  child: MainMap(
+    searchText: _searchText,
+  ),
+),
+
 
           // --- 2. Search Bar ---
-          Positioned(
-            top: 50,
-            left: 20,
-            right: 80,
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const TextField(
-                decoration: InputDecoration(
-                  hintText: 'Search Location...',
-                  prefixIcon: Icon(Icons.search, color: Colors.grey),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ),
+Positioned(
+  top: 50,
+  left: 20,
+  right: 80,
+  child: Container(
+    height: 50,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(25),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.15),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: TextField(
+      decoration: const InputDecoration(
+        hintText: 'Search Location...',
+        prefixIcon: Icon(Icons.search, color: Colors.grey),
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(vertical: 14),
+      ),
+      onSubmitted: (value) {
+        setState(() {
+          _searchText = value;
+        });
+
+        _searchLocation(value); // เรียกใช้ค้นหา
+      },
+    ),
+  ),
+),
 
           // --- 3. ปุ่มเมนู (ขวาบน) ---
           Positioned(
@@ -161,7 +180,7 @@ class _HomepageState extends State<Homepage> {
           // --- 8. Weather Popup (สภาพอากาศ) ---
           if (_showWeatherPopup)
             Container(
-              color: Colors.black.withOpacity(0.3), 
+              color: Colors.black.withOpacity(0.3),
               child: WeatherPopup(
                 onClose: () => setState(() => _showWeatherPopup = false),
               ),
