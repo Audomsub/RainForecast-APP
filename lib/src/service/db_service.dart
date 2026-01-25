@@ -2,7 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // จำเป็นสำหรับ Colors และ Icons
 
 class DBService {
   static Database? _db;
@@ -15,8 +15,8 @@ class DBService {
 
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
-    // ใช้ชื่อ DB เดิมที่คุณใช้อยู่ (เช่น rainforecast_v2.db หรือ rainforecast_final.db)
-    final path = join(dbPath, 'rainforecast_v2.db'); 
+    // ⚠️ เปลี่ยนชื่อ DB เป็น 'rainforecast_complete.db' เพื่อเริ่มสร้างตารางใหม่ที่สมบูรณ์
+    final path = join(dbPath, 'rainforecast_complete.db'); 
 
     print('✅ DATABASE PATH => $path');
 
@@ -24,7 +24,7 @@ class DBService {
       path,
       version: 1,
       onCreate: (db, version) async {
-        // 1. Admin Table
+        // --- 1. Admin Table ---
         await db.execute('''
           CREATE TABLE admin_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,13 +33,14 @@ class DBService {
             is_admin INTEGER DEFAULT 0
           )
         ''');
+        // เพิ่ม Admin เริ่มต้น: admin@gmail.com / 123456
         await db.insert('admin_users', {
           'email': 'admin@gmail.com',
           'password_hash': hashPassword('123456'),
           'is_admin': 1,
         });
 
-        // 2. Report Categories
+        // --- 2. Table ระดับฝน (Report Categories) ---
         await db.execute('''
           CREATE TABLE report_categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,15 +50,15 @@ class DBService {
           )
         ''');
 
-        // ข้อมูล 6 ระดับ
-        await db.insert('report_categories', {'name': 'Light Rain', 'icon_code': 0xe197, 'color_value': 0xFF69F0AE});
-        await db.insert('report_categories', {'name': 'Moderate Rain', 'icon_code': 0xe6e6, 'color_value': 0xFFFFEB3B});
-        await db.insert('report_categories', {'name': 'Mod-Heavy Rain', 'icon_code': 0xe6e5, 'color_value': 0xFFFF9800});
-        await db.insert('report_categories', {'name': 'Heavy Rain', 'icon_code': 0xe6e4, 'color_value': 0xFFF44336});
-        await db.insert('report_categories', {'name': 'Very Heavy Rain', 'icon_code': 0xe6e7, 'color_value': 0xFF9C27B0});
-        await db.insert('report_categories', {'name': 'Extreme Rain', 'icon_code': 0xeb46, 'color_value': 0xFF2196F3});
+        // ✅ เพิ่มข้อมูล 6 ระดับ (Seeding)
+        await db.insert('report_categories', {'name': 'Light Rain', 'icon_code': Icons.cloud.codePoint, 'color_value': 0xFF69F0AE}); // เขียว
+        await db.insert('report_categories', {'name': 'Moderate Rain', 'icon_code': Icons.grain.codePoint, 'color_value': 0xFFFFEB3B}); // เหลือง
+        await db.insert('report_categories', {'name': 'Mod-Heavy Rain', 'icon_code': Icons.shower.codePoint, 'color_value': 0xFFFF9800}); // ส้ม
+        await db.insert('report_categories', {'name': 'Heavy Rain', 'icon_code': Icons.umbrella.codePoint, 'color_value': 0xFFF44336}); // แดง
+        await db.insert('report_categories', {'name': 'Very Heavy Rain', 'icon_code': Icons.thunderstorm.codePoint, 'color_value': 0xFF9C27B0}); // ม่วง
+        await db.insert('report_categories', {'name': 'Extreme Rain', 'icon_code': Icons.tsunami.codePoint, 'color_value': 0xFF2196F3}); // ฟ้า
 
-        // 3. Rain Reports
+        // --- 3. Table เก็บรายงาน (Rain Reports) ---
         await db.execute('''
           CREATE TABLE rain_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,26 +68,32 @@ class DBService {
             timestamp TEXT NOT NULL, 
             description TEXT,
             reporter_name TEXT,
-            image_path TEXT, 
+            image_path TEXT,
             FOREIGN KEY (category_id) REFERENCES report_categories (id) ON DELETE CASCADE
           )
         ''');
         
-        print('✅ Database Created!');
+        print('✅ Database Created: rainforecast_complete.db');
       },
     );
   }
 
+  // ฟังก์ชัน Hash Password
   static String hashPassword(String password) {
     return sha256.convert(utf8.encode(password)).toString();
   }
 
-  // --- CRUD Functions ---
+  // ==========================================
+  // 🌧️ ฟังก์ชันสำหรับ User ทั่วไป
+  // ==========================================
+
+  // 1. ดึง Categories มาแสดงใน Dropdown
   Future<List<Map<String, dynamic>>> getCategories() async {
     final db = await database;
     return await db.query('report_categories');
   }
 
+  // 2. บันทึกรายงาน (Create) รองรับรูปภาพ
   Future<int> addReport(double lat, double lng, int categoryId, String desc, String reporter, String? imagePath) async {
     final db = await database;
     return await db.insert('rain_reports', {
@@ -100,9 +107,12 @@ class DBService {
     });
   }
 
+  // 3. ดึงรายงาน Active (30 นาทีล่าสุด)
   Future<List<Map<String, dynamic>>> getActiveReports() async {
     final db = await database;
+    // ดึงข้อมูลย้อนหลังไม่เกิน 30 นาที
     final timeLimit = DateTime.now().subtract(const Duration(minutes: 30)).toIso8601String();
+
     return await db.rawQuery('''
       SELECT r.*, c.name as cat_name, c.icon_code, c.color_value
       FROM rain_reports r
@@ -112,22 +122,25 @@ class DBService {
     ''', [timeLimit]);
   }
 
-  // --- Admin Functions ---
+  // ==========================================
+  // 🛡️ ฟังก์ชันสำหรับ Admin Dashboard
+  // ==========================================
 
+  // 4. ดึงรายงานทั้งหมด (Admin) + ✅ แก้บั๊ก ID
   Future<List<Map<String, dynamic>>> getAllReportsForAdmin() async {
     final db = await database;
+    // ⚠️ สำคัญ: ตั้งชื่อ r.id เป็น report_id เพื่อไม่ให้ซ้ำกับ c.id
     return await db.rawQuery('''
-      SELECT r.*, c.name as cat_name, c.icon_code, c.color_value
+      SELECT r.id as report_id, r.*, c.name as cat_name, c.icon_code, c.color_value
       FROM rain_reports r
       JOIN report_categories c ON r.category_id = c.id
       ORDER BY r.timestamp DESC
     ''');
   }
 
-  // ✅ 1. ดึงรายชื่อผู้ใช้ทั้งหมด (คนที่เคยรายงาน)
+  // 5. ดึงรายชื่อผู้ใช้ทั้งหมด (Unique Users)
   Future<List<Map<String, dynamic>>> getUniqueUsers() async {
     final db = await database;
-    // ดึงชื่อคนรายงานที่ไม่ซ้ำกัน พร้อมนับจำนวนครั้งที่รายงาน
     return await db.rawQuery('''
       SELECT reporter_name, COUNT(*) as report_count, MAX(timestamp) as last_active
       FROM rain_reports
@@ -136,11 +149,10 @@ class DBService {
     ''');
   }
 
-  // ✅ 2. ดึงสถิติรายชั่วโมง (00:00 - 23:00)
+  // 6. ดึงสถิติรายชั่วโมง (Hourly Stats)
   Future<List<Map<String, dynamic>>> getHourlyStats() async {
     final db = await database;
-    // Group ตามชั่วโมง (Substr เอาแค่ 11,2 คือตำแหน่ง HH ใน ISO String)
-    // หมายเหตุ: SQLite ไม่มีฟังก์ชัน Hour โดยตรงที่ง่ายเหมือน MySQL เลยต้องใช้ substr หรือ strftime
+    // Group ตามชั่วโมง (HH)
     return await db.rawQuery('''
       SELECT strftime('%H', timestamp) as hour, COUNT(*) as count
       FROM rain_reports
@@ -149,6 +161,7 @@ class DBService {
     ''');
   }
 
+  // 7. แก้ไขรายงาน (Update)
   Future<int> updateReport(int id, int categoryId, String description) async {
     final db = await database;
     return await db.update('rain_reports', {
@@ -157,11 +170,13 @@ class DBService {
     }, where: 'id = ?', whereArgs: [id]);
   }
   
+  // 8. ลบรายงาน (Delete)
   Future<int> deleteReport(int id) async {
     final db = await database;
     return await db.delete('rain_reports', where: 'id = ?', whereArgs: [id]);
   }
 
+  // ฟังก์ชัน Login
   Future<bool> loginAdmin(String email, String password) async {
     final db = await database;
     final result = await db.query(

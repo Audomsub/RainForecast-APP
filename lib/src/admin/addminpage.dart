@@ -37,8 +37,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
   }
 
   Future<void> _deleteReport(int id) async {
+    print("Deleting report ID: $id"); // Debug ดู ID ที่จะลบ
     await _dbService.deleteReport(id);
-    _loadAllData();
+    await _loadAllData(); // โหลดข้อมูลใหม่หลังจากลบ
     if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ลบรายงานแล้ว')));
   }
 
@@ -81,9 +82,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก')),
                 ElevatedButton(
                   onPressed: () async {
-                    await _dbService.updateReport(report['id'], tempCatId, descCtrl.text);
+                    // ✅ แก้ไข: ใช้ report['report_id'] แทน report['id']
+                    await _dbService.updateReport(report['report_id'], tempCatId, descCtrl.text);
                     Navigator.pop(context);
-                    _loadAllData();
+                    await _loadAllData(); // โหลดข้อมูลใหม่ทันที
                   },
                   child: const Text('บันทึก'),
                 ),
@@ -132,7 +134,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     );
   }
 
-  // Widget 1: รายการรายงาน (เหมือนเดิม)
   Widget _buildReportsList() {
     if (_reports.isEmpty) return const Center(child: Text("ยังไม่มีรายงานเข้ามา"));
     return ListView.builder(
@@ -162,8 +163,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(icon: const Icon(Icons.edit, color: Colors.orange), onPressed: () => _editReport(report)),
-                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteReport(report['id'])),
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.orange), 
+                  onPressed: () => _editReport(report),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red), 
+                  // ✅ แก้ไข: ใช้ report['report_id'] แทน report['id']
+                  onPressed: () => _deleteReport(report['report_id']),
+                ),
               ],
             ),
           ),
@@ -172,7 +180,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     );
   }
 
-  // Widget 2: รายชื่อผู้ใช้ทั้งหมด
+  // ... (Widget _buildUsersList และ _buildHourlyStats คงไว้เหมือนเดิม) ...
   Widget _buildUsersList() {
     if (_users.isEmpty) return const Center(child: Text("ยังไม่มีข้อมูลผู้ใช้"));
     return ListView.builder(
@@ -204,18 +212,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     );
   }
 
-  // Widget 3: สถิติตามช่วงเวลา (Hourly Stats)
   Widget _buildHourlyStats() {
     if (_stats.isEmpty) return const Center(child: Text("ไม่มีข้อมูลสถิติ"));
     
-    // เตรียมข้อมูล 24 ชั่วโมง (0-23)
     List<int> hourlyCounts = List.filled(24, 0);
     for (var s in _stats) {
       int hour = int.parse(s['hour']);
       hourlyCounts[hour] = s['count'];
     }
 
-    // หาค่าสูงสุดเพื่อคำนวณความสูงกราฟ
     int maxCount = hourlyCounts.reduce((curr, next) => curr > next ? curr : next);
     if (maxCount == 0) maxCount = 1;
 
@@ -242,7 +247,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                     const SizedBox(height: 5),
                     Container(
                       width: 20,
-                      height: 200 * heightFactor + 10, // ความสูงกราฟขั้นต่ำ 10
+                      height: 200 * heightFactor + 10,
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: count > 0 ? const Color(0xFF6C63FF) : Colors.grey[300],
