@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:rainforecast_app/src/admin/addminpage.dart';
 import 'package:rainforecast_app/src/service/db_service.dart';
+// ตรวจสอบ path นี้ว่าถูกต้องหรือไม่
+import 'package:rainforecast_app/src/admin/addminpage.dart'; 
 
 class AdminLoginOverlay extends StatefulWidget {
   const AdminLoginOverlay({super.key});
@@ -25,8 +26,7 @@ class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
   }
 
   Future<void> login() async {
-    if (_emailController.text.isEmpty ||
-        _passwordController.text.isEmpty) {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       setState(() {
         message = '❗ กรุณากรอก Email และ Password';
       });
@@ -47,8 +47,9 @@ class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
 
     if (success) {
       setState(() => isLoading = false);
-
-      Navigator.pushReplacement(
+      // ปิด Overlay ก่อนแล้วค่อยไปหน้า Dashboard หรือจะ pushReplacement ก็ได้
+      Navigator.pop(context); 
+      Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => const AdminDashboardPage(),
@@ -77,15 +78,12 @@ class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 30),
-
               const Icon(
                 Icons.admin_panel_settings,
                 size: 80,
                 color: Colors.white,
               ),
-
               const SizedBox(height: 10),
-
               const Text(
                 'Admin Management',
                 style: TextStyle(
@@ -94,33 +92,25 @@ class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 20),
-
               _inputField(
                 'Email',
                 controller: _emailController,
               ),
-
               const SizedBox(height: 12),
-
               _inputField(
                 'Password',
                 controller: _passwordController,
                 isPassword: true,
               ),
-
               const SizedBox(height: 10),
-
               if (message.isNotEmpty)
                 Text(
                   message,
                   style: const TextStyle(color: Colors.red),
                   textAlign: TextAlign.center,
                 ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 width: double.infinity,
                 height: 45,
@@ -146,7 +136,6 @@ class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
             ],
           ),
         ),
-
         // 🔙 ปุ่มย้อนกลับ
         Positioned(
           top: 5,

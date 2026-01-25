@@ -1,8 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Imports
 import 'package:rainforecast_app/src/appbar/dropdown-menu.dart';
 import 'package:rainforecast_app/src/appbar/menuAlert.dart';
 import 'package:rainforecast_app/src/map/mainmap.dart';
@@ -10,18 +10,14 @@ import 'package:rainforecast_app/src/legend/legendBar.dart';
 import 'package:rainforecast_app/src/legend/legendPopuo.dart';
 import 'package:rainforecast_app/src/popup/alertPopup.dart';
 import 'package:rainforecast_app/src/popup/weatherPopup.dart';
-import 'package:rainforecast_app/src/login/login.dart';
+// import 'package:rainforecast_app/src/login/login.dart'; // ❌ ไม่ได้ใช้แล้ว comment ออกได้
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 🔐 Initialize Supabase
-  await Supabase.initialize(
-    url: 'https://okopzoltzofgefsihcvb.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rb3B6b2x0em9mZ2Vmc2loY3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMjg3ODYsImV4cCI6MjA4NDgwNDc4Nn0.lcFvT2doqDsDlru5mhkrDcG1dzEdRUCpkAFMqq4futw',
-  );
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   runApp(const MyApp());
 }
 
@@ -30,9 +26,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Homepage(),
+      // 🎨 Theme Minimalist
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        primaryColor: const Color(0xFF6C63FF),
+        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+        fontFamily: 'Roboto',
+        // ตั้งค่า Input ทั่วไป
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
+          ),
+          hintStyle: TextStyle(color: Colors.grey.shade400),
+        ),
+      ),
+      home: const Homepage(),
     );
   }
 }
@@ -45,63 +59,83 @@ class Homepage extends StatefulWidget {
 }
 
 class _HomepageState extends State<Homepage> {
+  final TextEditingController _searchController = TextEditingController();
+
   bool _showLegend = false;
   bool _showWeatherPopup = false;
   bool _showAlertPopup = false;
   String _searchText = "";
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _searchLocation(String keyword) {
     debugPrint("Search keyword: $keyword");
   }
 
-  // ================== เปิดหน้า Login ==================
-  void _openAdminLogin() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: AdminLoginOverlay(),
-      ),
-    );
-  }
-  // ====================================================
+  // ❌ ลบฟังก์ชัน _openAdminLogin ออกแล้ว เพราะไม่มีปุ่มให้กด
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // --- 1. Map ---
           Positioned.fill(
-            child: MainMap(
-              searchText: _searchText,
-            ),
+            child: MainMap(searchText: _searchText),
           ),
 
-          // --- 2. Search Bar ---
+          // --- 2. Search Bar (แบบโปร่งใส ไม่มีกรอบหลัง) ---
           Positioned(
-            top: 50,
+            top: 60,
             left: 20,
-            right: 80,
+            right: 90, 
             child: Container(
-              height: 50,
+              height: 55,
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(25),
+                color: Colors.white.withOpacity(0.95), // พื้นหลังปุ่มค้นหาอยู่ที่นี่
+                borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 5),
                   ),
                 ],
               ),
               child: TextField(
-                decoration: const InputDecoration(
+                controller: _searchController,
+                style: const TextStyle(color: Colors.black87),
+                decoration: InputDecoration(
+                  // ✅ ปิด filled เพื่อไม่ให้มีกล่องสี่เหลี่ยมซ้อน
+                  filled: false, 
                   hintText: 'Search Location...',
-                  prefixIcon: Icon(Icons.search, color: Colors.grey),
+                  hintStyle: TextStyle(color: Colors.grey.shade500),
+                  prefixIcon: const Icon(Icons.location_on_rounded, color: Color(0xFF6C63FF)),
+                  suffixIcon: Container(
+                    margin: const EdgeInsets.all(5),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF6C63FF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.search, color: Colors.white, size: 20),
+                      onPressed: () {
+                        final value = _searchController.text;
+                        if (value.isNotEmpty) {
+                          setState(() => _searchText = value);
+                          _searchLocation(value);
+                          FocusScope.of(context).unfocus();
+                        }
+                      },
+                    ),
+                  ),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
                 ),
                 onSubmitted: (value) {
                   setState(() => _searchText = value);
@@ -113,7 +147,7 @@ class _HomepageState extends State<Homepage> {
 
           // --- 3. Menu (ขวาบน) ---
           Positioned(
-            top: 50,
+            top: 60,
             right: 20,
             child: MapMenu(
               onLegendToggle: () {
@@ -128,21 +162,11 @@ class _HomepageState extends State<Homepage> {
             ),
           ),
 
-          // --- 🔐 ปุ่ม Admin Login (ซ้ายล่าง) ---
-          Positioned(
-            bottom: 100,
-            left: 20,
-            child: FloatingActionButton(
-              heroTag: 'admin',
-              backgroundColor: Colors.red,
-              onPressed: _openAdminLogin,
-              child: const Icon(Icons.admin_panel_settings),
-            ),
-          ),
+          // ❌ ลบ Positioned ของปุ่ม Admin ออกไปแล้วตรงนี้
 
           // --- 4. Left Buttons ---
           Positioned(
-            top: 180,
+            top: 150,
             left: 20,
             child: LeftButtons(
               onWeatherTap: () {
@@ -168,15 +192,16 @@ class _HomepageState extends State<Homepage> {
 
           // --- Legend Bar ---
           const Positioned(
-            bottom: 30,
+            bottom: 40,
             left: 20,
             right: 20,
             child: RainLegendBar(),
           ),
 
+          // --- Popups ---
           if (_showLegend)
             Positioned(
-              top: 120,
+              top: 130,
               right: 80,
               child: LegendPopup(
                 onClose: () => setState(() => _showLegend = false),
