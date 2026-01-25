@@ -42,10 +42,12 @@ dependencies:
   http: ^1.2.0
   geocoding: ^3.0.0
   shared_preferences: ^2.5.4
+  path: ^1.9.0
+  sqflite: ^2.3.0
+  supabase_flutter: ^2.3.4
+  sqflite_common_ffi: ^2.3.0
+  crypto: ^3.0.3
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -68,6 +70,7 @@ flutter:
   
   assets:
     # - assets/images/
+    - backend/flutter.db
 
   # To add assets to your application, add an assets section, like this:
   # assets:

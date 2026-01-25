@@ -1,9 +1,38 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
-class WeatherPopup extends StatelessWidget {
+class WeatherPopup extends StatefulWidget {
   final VoidCallback onClose;
 
   const WeatherPopup({super.key, required this.onClose});
+
+  @override
+  State<WeatherPopup> createState() => _WeatherPopupState();
+}
+
+class _WeatherPopupState extends State<WeatherPopup> {
+  String selectedDate = "Today";
+
+  final List<_DateOption> dates = const [
+    _DateOption(
+      value: "Today",
+      title: "Today",
+      subtitle: "Current weather",
+      icon: Icons.today,
+    ),
+    _DateOption(
+      value: "Tomorrow",
+      title: "Tomorrow",
+      subtitle: "Next day forecast",
+      icon: Icons.calendar_today,
+    ),
+    _DateOption(
+      value: "Next 3 Days",
+      title: "Next 3 Days",
+      subtitle: "Extended forecast",
+      icon: Icons.date_range,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -11,123 +40,181 @@ class WeatherPopup extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // --- กล่องข้อมูลหลัก (สีดำโปร่งแสง) ---
-          Container(
-            width: 300,
-            padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.65), // พื้นหลังสีดำจางๆ
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                // 1. ไอคอนก้อนเมฆใหญ่
-                const Icon(
-                  Icons.cloud_outlined, // หรือใช้ Icons.cloud
-                  size: 100,
-                  color: Colors.white,
-                ),
-                
-                // ไอคอนหยดน้ำฝน (ตกแต่งเพิ่มให้เหมือนรูป)
-                Transform.translate(
-                  offset: const Offset(0, -20),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.water_drop, color: Colors.white, size: 30),
-                      Icon(Icons.water_drop, color: Colors.white, size: 40),
-                      Icon(Icons.water_drop, color: Colors.white, size: 30),
+          // ---------- Glass Card ----------
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                width: 320,
+                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 22),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withOpacity(0.55),
+                      Colors.black.withOpacity(0.35),
                     ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.white.withOpacity(0.15)),
                 ),
-
-                // 2. ข้อความ Heavy Rain
-                const Text(
-                  "Heavy Rain",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // 3. แถบวันที่ (Date Selector)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        "",
-                        style: TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                      SizedBox(width: 10),
-                      Icon(Icons.arrow_drop_down, color: Colors.white),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // 4. สถิติ (70% ฝน, 30% แดด)
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Column(
                   children: [
-                    _WeatherStat(icon: Icons.thunderstorm, label: "70 %"),
-                    _WeatherStat(icon: Icons.wb_sunny, label: "30 %"),
+                    // ---------- Weather Icon ----------
+                    const Icon(
+                      Icons.cloud_outlined,
+                      size: 90,
+                      color: Colors.white,
+                    ),
+
+                    Transform.translate(
+                      offset: const Offset(0, -18),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.water_drop,
+                              size: 22, color: Colors.white70),
+                          Icon(Icons.water_drop,
+                              size: 30, color: Colors.white),
+                          Icon(Icons.water_drop,
+                              size: 22, color: Colors.white70),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    // ---------- Title ----------
+                    const Text(
+                      "Heavy Rain",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // ---------- Dropdown ----------
+                    _dateDropdown(),
+
+                    const SizedBox(height: 22),
+
+                    // ---------- Stats ----------
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _WeatherStat(
+                            icon: Icons.thunderstorm, label: "70%"),
+                        _WeatherStat(icon: Icons.wb_sunny, label: "30%"),
+                      ],
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    // ---------- Level Bar ----------
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: 0.7,
+                        minHeight: 10,
+                        backgroundColor: Colors.white12,
+                        valueColor: const AlwaysStoppedAnimation(
+                          Color(0xFFFF6F61),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-
-                const SizedBox(height: 20),
-
-                // 5. แถบสีแสดงระดับ (Bar)
-                Container(
-                  height: 15,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE57373), // สีแดงอมส้มตามรูป
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
 
-          // --- ปุ่มปิด (สีแดงกากบาท) ---
+          // ---------- Close Button ----------
           GestureDetector(
-            onTap: onClose,
+            onTap: widget.onClose,
             child: Container(
-              padding: const EdgeInsets.all(10),
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: Colors.redAccent,
+                color: Colors.white.withOpacity(0.12),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [
-                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                   )
-                ]
+                border: Border.all(color: Colors.white24),
               ),
-              child: const Icon(Icons.close, color: Colors.white, size: 30),
+              child: const Icon(Icons.close, color: Colors.white),
             ),
           ),
         ],
       ),
     );
   }
+
+  // ---------- Dropdown Widget ----------
+  Widget _dateDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: selectedDate,
+          isExpanded: true,
+          dropdownColor: Colors.black.withOpacity(0.9),
+          icon: const Icon(Icons.expand_more, color: Colors.white),
+          style: const TextStyle(color: Colors.white),
+          items: dates.map((option) {
+            return DropdownMenuItem<String>(
+              value: option.value,
+              child: Row(
+                children: [
+                  Icon(option.icon, color: Colors.white70, size: 20),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        option.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        option.subtitle,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              selectedDate = value!;
+            });
+          },
+        ),
+      ),
+    );
+  }
 }
 
-// Widget ย่อยสำหรับแสดงค่า % (เพื่อลดโค้ดซ้ำ)
+// ---------- Weather Stat ----------
 class _WeatherStat extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -138,13 +225,32 @@ class _WeatherStat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white70, size: 24),
-        const SizedBox(width: 8),
+        Icon(icon, color: Colors.white70, size: 22),
+        const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
   }
+}
+
+// ---------- Date Option Model ----------
+class _DateOption {
+  final String value;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _DateOption({
+    required this.value,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
 }

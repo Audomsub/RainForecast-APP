@@ -1,68 +1,173 @@
 import 'package:flutter/material.dart';
 import 'package:rainforecast_app/src/admin/addminpage.dart';
+import 'package:rainforecast_app/src/service/db_service.dart';
 
-
-class AdminLoginOverlay extends StatelessWidget {
+class AdminLoginOverlay extends StatefulWidget {
   const AdminLoginOverlay({super.key});
 
   @override
+  State<AdminLoginOverlay> createState() => _AdminLoginOverlayState();
+}
+
+class _AdminLoginOverlayState extends State<AdminLoginOverlay> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final DBService dbService = DBService();
+
+  bool isLoading = false;
+  String message = '';
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> login() async {
+    if (_emailController.text.isEmpty ||
+        _passwordController.text.isEmpty) {
+      setState(() {
+        message = '❗ กรุณากรอก Email และ Password';
+      });
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+      message = '';
+    });
+
+    final success = await dbService.loginAdmin(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      setState(() => isLoading = false);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const AdminDashboardPage(),
+        ),
+      );
+    } else {
+      setState(() {
+        isLoading = false;
+        message = '❌ Email หรือ Password ไม่ถูกต้อง';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 320,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.admin_panel_settings,
-            size: 80,
-            color: Colors.white,
+    return Stack(
+      children: [
+        Container(
+          width: 320,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.65),
+            borderRadius: BorderRadius.circular(16),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'Admin Management',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 30),
 
-          _inputField('Username'),
-          const SizedBox(height: 12),
-          _inputField('Password', isPassword: true),
-          const SizedBox(height: 20),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+              const Icon(
+                Icons.admin_panel_settings,
+                size: 80,
+                color: Colors.white,
               ),
-              onPressed: () {
-                
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AdminDashboardPage(),
+
+              const SizedBox(height: 10),
+
+              const Text(
+                'Admin Management',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              _inputField(
+                'Email',
+                controller: _emailController,
+              ),
+
+              const SizedBox(height: 12),
+
+              _inputField(
+                'Password',
+                controller: _passwordController,
+                isPassword: true,
+              ),
+
+              const SizedBox(height: 10),
+
+              if (message.isNotEmpty)
+                Text(
+                  message,
+                  style: const TextStyle(color: Colors.red),
+                  textAlign: TextAlign.center,
+                ),
+
+              const SizedBox(height: 12),
+
+              SizedBox(
+                width: double.infinity,
+                height: 45,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
                   ),
-                );
-              },
-              child: const Text('Sign In'),
-            ),
+                  onPressed: isLoading ? null : login,
+                  child: isLoading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        )
+                      : const Text(
+                          'Sign In',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+
+        // 🔙 ปุ่มย้อนกลับ
+        Positioned(
+          top: 5,
+          left: 5,
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            color: Colors.white,
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+      ],
     );
   }
 
-  static Widget _inputField(String hint, {bool isPassword = false}) {
+  Widget _inputField(
+    String hint, {
+    required TextEditingController controller,
+    bool isPassword = false,
+  }) {
     return TextField(
+      controller: controller,
       obscureText: isPassword,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
@@ -71,7 +176,7 @@ class AdminLoginOverlay extends StatelessWidget {
         filled: true,
         fillColor: Colors.white.withOpacity(0.2),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
       ),
