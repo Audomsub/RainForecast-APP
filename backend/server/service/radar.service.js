@@ -3,6 +3,8 @@ const { createClient } = require('@supabase/supabase-js');
 const https = require("https");
 require('dotenv').config();
 
+const aiResult = await aiService.getPrediction(publicUrl);
+
 // ตั้งค่า Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const API_URL = "https://file.royalrain.go.th/opendata/radar_data/cappi/api.php?station=rongkwang";
