@@ -1,3 +1,11 @@
+const dns = require('dns');
+try {
+    dns.setDefaultResultOrder('ipv4first');
+    console.log("🔒 Force IPv4 First: Enabled");
+} catch (e) {
+    console.log("⚠️ Node version < 17, cannot force IPv4 via code.");
+}
+
 const express = require("express");
 const morgan = require("morgan");
 const app = express();
