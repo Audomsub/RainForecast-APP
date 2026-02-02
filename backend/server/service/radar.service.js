@@ -3,15 +3,18 @@ const { createClient } = require('@supabase/supabase-js');
 const https = require("https");
 require('dotenv').config();
 
-const aiResult = await aiService.getPrediction(publicUrl);
+// นำเข้า AI Service
+const aiService = require('./ai.service'); 
 
 // ตั้งค่า Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const API_URL = "https://file.royalrain.go.th/opendata/radar_data/cappi/api.php?station=rongkwang";
 
+// Agent สำหรับข้าม SSL Error ของเว็บต้นทาง
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-exports.fetchRadarImage = async () => {
+// ฟังก์ชัน 1: ดึงรูปและอัปโหลด (Helper Function)
+exports.getLatestRadarImage = async () => {
     try {
         console.log("📡 กำลังดึงข้อมูลจาก:", API_URL);
         
@@ -59,11 +62,53 @@ exports.fetchRadarImage = async () => {
         const publicUrl = publicUrlData.publicUrl;
         console.log("☁️ อัปโหลดเสร็จสิ้น:", publicUrl);
 
-        // ส่งข้อมูลกลับ (ใช้ publicUrl เป็น filepath)
-        return { filename, filepath: publicUrl, source_url: imageUrl };
+        return { filename, publicUrl, source_url: imageUrl };
 
     } catch (error) {
-        console.error("❌ Error in fetchRadarImage:", error.message);
+        console.error("❌ Error in getLatestRadarImage:", error.message);
         throw error;
     }
 };
+
+// ฟังก์ชัน 2: Auto Fetch (เรียกโดย Scheduler)
+exports.autoFetchRadar = async () => {
+    console.log(`⏰ [${new Date().toLocaleTimeString()}] เริ่มทำงาน Auto Fetch Radar...`);
+    
+    try {
+        // 1. ดึงภาพและ Upload
+        const { filename, publicUrl } = await exports.getLatestRadarImage();
+
+        // 2. บันทึกลง Database
+        const { data: insertData, error: dbError } = await supabase
+            .from('radar_images')
+            .insert([{ 
+                station: 'rongkwang', 
+                filename: filename, 
+                url: publicUrl, 
+                timestamp: new Date() 
+            }])
+            .select();
+
+        if (dbError) throw dbError;
+        console.log(`✅ บันทึกภาพลง DB สำเร็จ ID: ${insertData[0].id}`);
+
+        // =========================================================
+        // 🚀 ส่งภาพไปให้ AI ประมวลผลทันที
+        // =========================================================
+        console.log("🤖 กำลังส่งภาพไปให้ AI พยากรณ์...");
+        
+        const predictionResult = await aiService.getPrediction(publicUrl);
+        console.log("🧠 ผลการพยากรณ์:", predictionResult);
+
+        // (Optional) ถ้าคุณมีตาราง predictions ก็บันทึกผลลง DB ตรงนี้ได้เลย
+        // await supabase.from('predictions').insert([...]);
+
+        return insertData;
+
+    } catch (error) {
+        console.error(`❌ Auto Fetch ล้มเหลว: ${error.message}`);
+    }
+};
+
+// ฟังก์ชัน 3: Manual Fetch (เรียกโดย API Controller)
+exports.fetchRadarImage = exports.getLatestRadarImage;
