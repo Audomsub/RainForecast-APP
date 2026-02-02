@@ -1,3 +1,4 @@
+import 'dart:async'; // เพิ่ม import timer
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:rainforecast_app/src/service/db_service.dart';
@@ -12,6 +13,7 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTickerProviderStateMixin {
   final DBService _dbService = DBService();
   late TabController _tabController;
+  Timer? _timer; // ตัวแปร Timer
 
   List<Map<String, dynamic>> _reports = [];
   List<Map<String, dynamic>> _users = [];
@@ -22,6 +24,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadAllData();
+    
+    // ✅ เริ่มการทำงานแบบ Real-time (โหลดใหม่ทุก 3 วินาที)
+    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (mounted) _loadAllData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel(); // ✅ ยกเลิก Timer เมื่อปิดหน้า
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAllData() async {
@@ -29,17 +43,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     final users = await _dbService.getUniqueUsers();
     final stats = await _dbService.getHourlyStats();
     
-    setState(() {
-      _reports = reports;
-      _users = users;
-      _stats = stats;
-    });
+    if (mounted) {
+      setState(() {
+        _reports = reports;
+        _users = users;
+        _stats = stats;
+      });
+    }
   }
 
+  // ... (ฟังก์ชัน _deleteReport, _editReport และ Widget build ใช้โค้ดเดิมได้เลยครับ)
+  // ... (เพียงแค่เปลี่ยน ID ใน _deleteReport, _editReport ให้ถูกต้องตามรอบก่อนหน้านี้)
+
   Future<void> _deleteReport(int id) async {
-    print("Deleting report ID: $id"); // Debug ดู ID ที่จะลบ
     await _dbService.deleteReport(id);
-    await _loadAllData(); // โหลดข้อมูลใหม่หลังจากลบ
+    await _loadAllData();
     if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ลบรายงานแล้ว')));
   }
 
@@ -82,10 +100,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก')),
                 ElevatedButton(
                   onPressed: () async {
-                    // ✅ แก้ไข: ใช้ report['report_id'] แทน report['id']
                     await _dbService.updateReport(report['report_id'], tempCatId, descCtrl.text);
                     Navigator.pop(context);
-                    await _loadAllData(); // โหลดข้อมูลใหม่ทันที
+                    await _loadAllData();
                   },
                   child: const Text('บันทึก'),
                 ),
@@ -121,13 +138,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
       body: TabBarView(
         controller: _tabController,
         children: [
-          // --- Tab 1: Manage Reports ---
           _buildReportsList(),
-
-          // --- Tab 2: All Users ---
           _buildUsersList(),
-
-          // --- Tab 3: Hourly Stats ---
           _buildHourlyStats(),
         ],
       ),
@@ -169,7 +181,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red), 
-                  // ✅ แก้ไข: ใช้ report['report_id'] แทน report['id']
                   onPressed: () => _deleteReport(report['report_id']),
                 ),
               ],
@@ -180,7 +191,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     );
   }
 
-  // ... (Widget _buildUsersList และ _buildHourlyStats คงไว้เหมือนเดิม) ...
   Widget _buildUsersList() {
     if (_users.isEmpty) return const Center(child: Text("ยังไม่มีข้อมูลผู้ใช้"));
     return ListView.builder(

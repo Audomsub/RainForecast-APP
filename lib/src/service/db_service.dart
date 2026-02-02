@@ -2,10 +2,14 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart'; // จำเป็นสำหรับ Colors และ Icons
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ 1. Import Supabase
 
 class DBService {
   static Database? _db;
+  
+  // ✅ 2. เรียกใช้ Client ของ Supabase
+  final _supabase = Supabase.instance.client; 
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -15,16 +19,14 @@ class DBService {
 
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
-    // ⚠️ เปลี่ยนชื่อ DB เป็น 'rainforecast_complete.db' เพื่อเริ่มสร้างตารางใหม่ที่สมบูรณ์
-    final path = join(dbPath, 'rainforecast_complete.db'); 
-
+    final path = join(dbPath, 'rainforecast_stable.db'); 
     print('✅ DATABASE PATH => $path');
 
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // --- 1. Admin Table ---
+        // --- สร้างตารางเหมือนเดิม ---
         await db.execute('''
           CREATE TABLE admin_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,14 +35,13 @@ class DBService {
             is_admin INTEGER DEFAULT 0
           )
         ''');
-        // เพิ่ม Admin เริ่มต้น: admin@gmail.com / 123456
+        
         await db.insert('admin_users', {
           'email': 'admin@gmail.com',
           'password_hash': hashPassword('123456'),
           'is_admin': 1,
         });
 
-        // --- 2. Table ระดับฝน (Report Categories) ---
         await db.execute('''
           CREATE TABLE report_categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,15 +51,13 @@ class DBService {
           )
         ''');
 
-        // ✅ เพิ่มข้อมูล 6 ระดับ (Seeding)
-        await db.insert('report_categories', {'name': 'Light Rain', 'icon_code': Icons.cloud.codePoint, 'color_value': 0xFF69F0AE}); // เขียว
-        await db.insert('report_categories', {'name': 'Moderate Rain', 'icon_code': Icons.grain.codePoint, 'color_value': 0xFFFFEB3B}); // เหลือง
-        await db.insert('report_categories', {'name': 'Mod-Heavy Rain', 'icon_code': Icons.shower.codePoint, 'color_value': 0xFFFF9800}); // ส้ม
-        await db.insert('report_categories', {'name': 'Heavy Rain', 'icon_code': Icons.umbrella.codePoint, 'color_value': 0xFFF44336}); // แดง
-        await db.insert('report_categories', {'name': 'Very Heavy Rain', 'icon_code': Icons.thunderstorm.codePoint, 'color_value': 0xFF9C27B0}); // ม่วง
-        await db.insert('report_categories', {'name': 'Extreme Rain', 'icon_code': Icons.tsunami.codePoint, 'color_value': 0xFF2196F3}); // ฟ้า
+        await db.insert('report_categories', {'name': 'Light Rain', 'icon_code': 0xe197, 'color_value': 0xFF69F0AE});
+        await db.insert('report_categories', {'name': 'Moderate Rain', 'icon_code': 0xe6e6, 'color_value': 0xFFFFEB3B});
+        await db.insert('report_categories', {'name': 'Mod-Heavy Rain', 'icon_code': 0xe6e5, 'color_value': 0xFFFF9800});
+        await db.insert('report_categories', {'name': 'Heavy Rain', 'icon_code': 0xe6e4, 'color_value': 0xFFF44336});
+        await db.insert('report_categories', {'name': 'Very Heavy Rain', 'icon_code': 0xe6e7, 'color_value': 0xFF9C27B0});
+        await db.insert('report_categories', {'name': 'Extreme Rain', 'icon_code': 0xeb46, 'color_value': 0xFF2196F3});
 
-        // --- 3. Table เก็บรายงาน (Rain Reports) ---
         await db.execute('''
           CREATE TABLE rain_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,46 +71,95 @@ class DBService {
             FOREIGN KEY (category_id) REFERENCES report_categories (id) ON DELETE CASCADE
           )
         ''');
-        
-        print('✅ Database Created: rainforecast_complete.db');
       },
     );
   }
 
-  // ฟังก์ชัน Hash Password
   static String hashPassword(String password) {
     return sha256.convert(utf8.encode(password)).toString();
   }
 
-  // ==========================================
-  // 🌧️ ฟังก์ชันสำหรับ User ทั่วไป
-  // ==========================================
+  // --- CRUD Functions ---
 
-  // 1. ดึง Categories มาแสดงใน Dropdown
   Future<List<Map<String, dynamic>>> getCategories() async {
     final db = await database;
     return await db.query('report_categories');
   }
 
-  // 2. บันทึกรายงาน (Create) รองรับรูปภาพ
-  Future<int> addReport(double lat, double lng, int categoryId, String desc, String reporter, String? imagePath) async {
+  // ✅ 3. แก้ไข addReport ให้ส่งทั้ง 2 ทาง
+  Future<void> addReport(double lat, double lng, int categoryId, String desc, String reporter, String? imagePath) async {
     final db = await database;
-    return await db.insert('rain_reports', {
+    final timestamp = DateTime.now().toIso8601String();
+
+    // 3.1 บันทึกลงเครื่อง (SQLite)
+    await db.insert('rain_reports', {
       'latitude': lat,
       'longitude': lng,
       'category_id': categoryId,
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': timestamp,
       'description': desc,
       'reporter_name': reporter,
-      'image_path': imagePath,
+      'image_path': imagePath, 
     });
+
+    // 3.2 ส่งขึ้น Supabase (Cloud)
+    try {
+      await _supabase.from('rain_reports').insert({
+        'latitude': lat,
+        'longitude': lng,
+        'category_id': categoryId,
+        'timestamp': timestamp,
+        'description': desc,
+        'reporter_name': reporter,
+        // หมายเหตุ: image_path ที่เป็น path ในเครื่องจะส่งไปไม่ได้
+        // ถ้าจะทำรูปออนไลน์ต้องอัพโหลดผ่าน Supabase Storage ก่อน
+      });
+      print("☁️ Sent to Supabase successfully");
+    } catch (e) {
+      print("❌ Supabase upload failed: $e");
+      // ถ้าเน็ตหลุด ก็ไม่เป็นไร เพราะเซฟลง SQLite แล้ว
+    }
   }
 
-  // 3. ดึงรายงาน Active (30 นาทีล่าสุด)
-  Future<List<Map<String, dynamic>>> getActiveReports() async {
+  // ✅ 4. เพิ่มฟังก์ชันดึงข้อมูลจาก Supabase
+  Future<List<Map<String, dynamic>>> getSupabaseReports() async {
+    try {
+      // ดึงข้อมูลพร้อม Join ตาราง Categories
+      final response = await _supabase
+          .from('rain_reports')
+          .select('*, report_categories(name, icon_code, color_value)')
+          .gt('timestamp', DateTime.now().subtract(const Duration(hours: 24)).toIso8601String())
+          .order('timestamp', ascending: false);
+
+      // ตรวจสอบว่า response เป็น List หรือไม่
+      final List<dynamic> data = response as List<dynamic>;
+      
+      // ✅ จุดที่แก้: ใช้ Map<String, dynamic>.from() เพื่อแปลง Type ของข้อมูลให้ถูกต้อง
+      return data.map<Map<String, dynamic>>((item) {
+        // แปลง item แต่ละตัวให้เป็น Map<String, dynamic> อย่างปลอดภัย
+        final safeItem = Map<String, dynamic>.from(item as Map);
+        
+        // จัดการกับข้อมูลที่ Join มา (report_categories)
+        final cat = safeItem['report_categories'];
+        
+        return {
+          ...safeItem,
+          'cat_name': cat != null ? cat['name'] : 'Unknown',
+          'icon_code': cat != null ? cat['icon_code'] : 0xe197, 
+          'color_value': cat != null ? cat['color_value'] : 0xFF9E9E9E, 
+        };
+      }).toList();
+
+    } catch (e) {
+      print("⚠️ Fetch Supabase Error: $e");
+      return []; // คืนค่าว่างถ้าดึงไม่ได้
+    }
+  }
+
+  // ฟังก์ชันดึงจาก SQLite (Offline)
+  Future<List<Map<String, dynamic>>> getLocalReports() async {
     final db = await database;
-    // ดึงข้อมูลย้อนหลังไม่เกิน 30 นาที
-    final timeLimit = DateTime.now().subtract(const Duration(minutes: 30)).toIso8601String();
+    final timeLimit = DateTime.now().subtract(const Duration(hours: 24)).toIso8601String();
 
     return await db.rawQuery('''
       SELECT r.*, c.name as cat_name, c.icon_code, c.color_value
@@ -122,14 +170,10 @@ class DBService {
     ''', [timeLimit]);
   }
 
-  // ==========================================
-  // 🛡️ ฟังก์ชันสำหรับ Admin Dashboard
-  // ==========================================
-
-  // 4. ดึงรายงานทั้งหมด (Admin) + ✅ แก้บั๊ก ID
+  // --- Admin Functions ---
+  // (ส่วน Admin ใช้ของเดิม หรือจะเปลี่ยนไปดึงจาก Supabase ก็ได้ในอนาคต)
   Future<List<Map<String, dynamic>>> getAllReportsForAdmin() async {
     final db = await database;
-    // ⚠️ สำคัญ: ตั้งชื่อ r.id เป็น report_id เพื่อไม่ให้ซ้ำกับ c.id
     return await db.rawQuery('''
       SELECT r.id as report_id, r.*, c.name as cat_name, c.icon_code, c.color_value
       FROM rain_reports r
@@ -138,7 +182,6 @@ class DBService {
     ''');
   }
 
-  // 5. ดึงรายชื่อผู้ใช้ทั้งหมด (Unique Users)
   Future<List<Map<String, dynamic>>> getUniqueUsers() async {
     final db = await database;
     return await db.rawQuery('''
@@ -149,10 +192,8 @@ class DBService {
     ''');
   }
 
-  // 6. ดึงสถิติรายชั่วโมง (Hourly Stats)
   Future<List<Map<String, dynamic>>> getHourlyStats() async {
     final db = await database;
-    // Group ตามชั่วโมง (HH)
     return await db.rawQuery('''
       SELECT strftime('%H', timestamp) as hour, COUNT(*) as count
       FROM rain_reports
@@ -161,7 +202,6 @@ class DBService {
     ''');
   }
 
-  // 7. แก้ไขรายงาน (Update)
   Future<int> updateReport(int id, int categoryId, String description) async {
     final db = await database;
     return await db.update('rain_reports', {
@@ -170,13 +210,11 @@ class DBService {
     }, where: 'id = ?', whereArgs: [id]);
   }
   
-  // 8. ลบรายงาน (Delete)
   Future<int> deleteReport(int id) async {
     final db = await database;
     return await db.delete('rain_reports', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ฟังก์ชัน Login
   Future<bool> loginAdmin(String email, String password) async {
     final db = await database;
     final result = await db.query(

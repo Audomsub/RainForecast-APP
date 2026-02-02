@@ -7,7 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:rainforecast_app/src/service/db_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ Import Supabase
+import '../service/db_service.dart';
 import 'optionmap.dart'; 
 
 class MainMap extends StatefulWidget {
@@ -26,30 +27,71 @@ class _MainMapState extends State<MainMap> {
   LatLng? _searchMarker;
   LatLng? _currentLocation;
   
-  // List เก็บหมุดชั่วคราว (สีน้ำเงิน)
   final List<LatLng> _userTempPins = [];
-  
-  // List เก็บรายงานจริงจาก DB
   List<Map<String, dynamic>> _rainReports = [];
+
+  // ✅ ตัวแปรสำหรับ Realtime Subscription
+  late final RealtimeChannel _rainChannel; 
 
   @override
   void initState() {
     super.initState();
     _fetchReports();
-    _handleCurrentLocation(); // หาพิกัดตั้งแต่เริ่มแอป
-    Timer.periodic(const Duration(minutes: 1), (timer) {
-      if (mounted) _fetchReports();
-    });
+    _handleCurrentLocation();
+    
+    // ✅ 1. เริ่มฟัง Realtime Changes จาก Supabase
+    _subscribeToRainReports();
   }
 
+  @override
+  void dispose() {
+    // ✅ 2. ยกเลิกการฟังเมื่อปิดหน้า
+    Supabase.instance.client.removeChannel(_rainChannel);
+    super.dispose();
+  }
+
+  // ✅ ฟังก์ชันฟัง Realtime
+  void _subscribeToRainReports() {
+    _rainChannel = Supabase.instance.client
+      .channel('public:rain_reports')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'rain_reports',
+        callback: (payload) {
+          print('⚡ Realtime Update: มีจุดฝนตกใหม่!');
+          // เมื่อมีข้อมูลใหม่ ให้โหลดข้อมูลใหม่ทั้งหมดมาแสดง
+          _fetchReports();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('⚡ มีรายงานฝนตกจุดใหม่!')),
+            );
+          }
+        },
+      )
+      .subscribe();
+  }
+
+  // ✅ ปรับปรุงการดึงข้อมูล
   Future<void> _fetchReports() async {
-    final reports = await _dbService.getActiveReports();
-    setState(() => _rainReports = reports);
+    // 1. ลองดึงจาก Supabase ก่อน (เห็นของคนอื่น)
+    List<Map<String, dynamic>> reports = await _dbService.getSupabaseReports();
+    
+    // 2. ถ้าดึงไม่ได้ (เน็ตหลุด) หรือไม่มีข้อมูล ให้ดึงจาก SQLite (Offline)
+    if (reports.isEmpty) {
+      print("⚠️ ใช้ข้อมูล Offline Mode");
+      reports = await _dbService.getLocalReports();
+    } else {
+      print("☁️ ใช้ข้อมูล Online Mode (${reports.length} จุด)");
+    }
+
+    if (mounted) {
+      setState(() => _rainReports = reports);
+    }
   }
 
-  // ✅ ฟังก์ชันปุ่ม "แจ้งจุดฝนตก" (ใช้ GPS)
   Future<void> _onNotifyRainPressed() async {
-    // 1. เช็ค/ขอ Permission และหาพิกัด
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเปิด GPS')));
@@ -62,18 +104,15 @@ class _MainMapState extends State<MainMap> {
       if (permission == LocationPermission.denied) return;
     }
     
-    // 2. ดึงพิกัดปัจจุบัน (High Accuracy)
     try {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       LatLng userLatLng = LatLng(position.latitude, position.longitude);
 
       setState(() {
         _currentLocation = userLatLng;
-        // 3. ปักหมุดสีน้ำเงินที่ตำแหน่งปัจจุบันทันที
         _userTempPins.add(userLatLng);
       });
 
-      // 4. เลื่อนแผนที่ไปหาหมุด
       _mapController.move(userLatLng, 15);
 
       if(mounted) {
@@ -87,7 +126,6 @@ class _MainMapState extends State<MainMap> {
     }
   }
 
-  // ฟังก์ชันเมื่อแตะแผนที่ (ปักหมุดเอง manual)
   void _onMapTap(TapPosition tapPosition, LatLng point) {
     setState(() {
       _userTempPins.add(point);
@@ -100,7 +138,6 @@ class _MainMapState extends State<MainMap> {
     });
   }
 
-  // Dialog แจ้งรายละเอียด
   void _showAddReportDialog(LatLng targetPoint) async {
     final categories = await _dbService.getCategories();
     if (categories.isEmpty) return; 
@@ -123,7 +160,6 @@ class _MainMapState extends State<MainMap> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // เลือกรูปภาพ
                     GestureDetector(
                       onTap: () async {
                         final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
@@ -195,20 +231,22 @@ class _MainMapState extends State<MainMap> {
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
                   onPressed: () async {
                     if (selectedCatId != null) {
+                      // ✅ เรียก addReport ซึ่งจะบันทึกทั้ง SQLite และ Supabase
                       await _dbService.addReport(
                         targetPoint.latitude,
                         targetPoint.longitude,
                         selectedCatId!,
                         descCtrl.text,
-                        "User_${DateTime.now().second}",
+                        "User_${DateTime.now().second}", // อาจเปลี่ยนเป็นชื่อ user จริงถ้ามี login
                         _selectedImage?.path,
                       );
                       Navigator.pop(context);
                       
-                      // ลบหมุดชั่วคราวออก
                       setState(() {
                         _userTempPins.remove(targetPoint);
                       });
+                      
+                      // เรียกโหลดใหม่ทันที (ซึ่งจะไปดึงจาก Online หรือ Offline ก็แล้วแต่สถานะ)
                       _fetchReports();
                     }
                   },
@@ -222,7 +260,6 @@ class _MainMapState extends State<MainMap> {
     );
   }
 
-  // Modal แสดงรายละเอียด
   void _showReportDetail(Map<String, dynamic> report) {
     showModalBottomSheet(
       context: context,
@@ -239,6 +276,8 @@ class _MainMapState extends State<MainMap> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // หมายเหตุ: รูปภาพจาก Supabase อาจต้องใช้ Image.network แทน Image.file
+              // ในโค้ดนี้ยังรองรับ Image.file (Local) เป็นหลัก
               if (report['image_path'] != null && File(report['image_path']).existsSync())
                 Container(
                   height: 200,
@@ -278,7 +317,6 @@ class _MainMapState extends State<MainMap> {
     );
   }
 
-  // Map Controls
   void _handleZoomIn() {
     double currentZoom = _mapController.camera.zoom;
     _mapController.move(_mapController.camera.center, currentZoom + 1);
@@ -312,8 +350,23 @@ class _MainMapState extends State<MainMap> {
   }
 
   Future<void> _searchLocation(String query) async {
-    // ... (Code search เดิม) ...
-    // เพื่อความกระชับ ขอละไว้ (ใช้โค้ดเดิมได้เลย)
+    final url = 'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=1';
+    try {
+        final response = await http.get(Uri.parse(url), headers: {'User-Agent': 'rainforecast-app'});
+        if (response.statusCode == 200) {
+        final List data = json.decode(response.body);
+        if (data.isNotEmpty) {
+            final lat = double.parse(data[0]['lat']);
+            final lon = double.parse(data[0]['lon']);
+            final position = LatLng(lat, lon);
+            if (!mounted) return;
+            setState(() => _searchMarker = position);
+            _mapController.move(position, 14);
+        }
+        }
+    } catch (e) {
+        debugPrint("Error searching location: $e");
+    }
   }
 
   @override
@@ -325,7 +378,7 @@ class _MainMapState extends State<MainMap> {
           options: MapOptions(
             initialCenter: const LatLng(13.7563, 100.5018),
             initialZoom: 9.2,
-            onTap: _onMapTap, // จิ้มแผนที่ก็ปักหมุดได้เหมือนกัน
+            onTap: _onMapTap,
           ),
           children: [
             TileLayer(
@@ -333,7 +386,6 @@ class _MainMapState extends State<MainMap> {
               userAgentPackageName: 'com.example.rainforecast_app',
             ),
             
-            // Layer หมุดชั่วคราว (สีน้ำเงิน)
             MarkerLayer(
               markers: _userTempPins.map((point) {
                 return Marker(
@@ -354,7 +406,6 @@ class _MainMapState extends State<MainMap> {
               }).toList(),
             ),
 
-            // Layer หมุดรายงานจริง
             MarkerLayer(
               markers: _rainReports.map((report) {
                 return Marker(
@@ -397,6 +448,17 @@ class _MainMapState extends State<MainMap> {
                   ),
                 ],
               ),
+              
+             if (_searchMarker != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _searchMarker!,
+                    width: 40, height: 40,
+                    child: const Icon(Icons.location_pin, color: Colors.red, size: 40),
+                  ),
+                ],
+              ),
           ],
         ),
         
@@ -409,14 +471,12 @@ class _MainMapState extends State<MainMap> {
           ),
         ),
 
-        // ✅ ปุ่ม FAB แจ้งจุดฝนตก (ดึง GPS -> ปักหมุดสีน้ำเงิน)
         Positioned(
           bottom: 120,
           left: 20,
           child: FloatingActionButton.extended(
             heroTag: 'notify_rain',
             backgroundColor: const Color(0xFF6C63FF),
-            // กดปุ่มนี้ -> เรียกฟังก์ชันหา GPS + ปักหมุด
             onPressed: _onNotifyRainPressed, 
             icon: const Icon(Icons.add_location_alt, color: Colors.white),
             label: const Text("แจ้งจุดฝนตก", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

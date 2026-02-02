@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart'; // เพิ่ม
 // Imports
 import 'package:rainforecast_app/src/appbar/dropdown-menu.dart';
 import 'package:rainforecast_app/src/appbar/menuAlert.dart';
@@ -18,6 +18,11 @@ void main() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
+
+  await Supabase.initialize(
+    url: 'https://okopzoltzofgefsihcvb.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rb3B6b2x0em9mZ2Vmc2loY3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMjg3ODYsImV4cCI6MjA4NDgwNDc4Nn0.lcFvT2doqDsDlru5mhkrDcG1dzEdRUCpkAFMqq4futw',
+  );
   runApp(const MyApp());
 }
 
