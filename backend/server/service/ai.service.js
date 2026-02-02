@@ -1,20 +1,34 @@
 const axios = require("axios");
 require('dotenv').config();
 
-exports.predictRain = async (imageUrl) => { // เปลี่ยนชื่อพารามิเตอร์เป็น imageUrl ให้ชัดเจน
+// ใช้ชื่อฟังก์ชัน getPrediction เพื่อให้ตรงกับ radar.service.js
+exports.getPrediction = async (imageUrl) => { 
     try {
-        // AI ต้องรองรับการโหลดรูปจาก URL หรือต้องโหลดไฟล์ไปให้
-        // สมมติว่า AI API รับ URL รูปภาพได้
-        const aiUrl = process.env.AI_API_URL || "http://localhost:8000/predict";
+        // AI URL ควรมาจาก Environment Variable (ถ้าไม่มีใช้ localhost เป็นค่าเริ่มต้น)
+        const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+        const endpoint = `${aiUrl}/predict`;
         
-        // หมายเหตุ: ถ้า Python Code ของคุณรับแค่ 'path' เครื่องตัวเอง 
-        // คุณต้องแก้ Python ให้รับ URL แล้วโหลดรูปเอง หรือส่งรูปเป็น Base64
-        const r = await axios.post(aiUrl, { 
-            image_path: imageUrl // ตอนนี้ filepath กลายเป็น URL ของ Supabase แล้ว
+        console.log(`🤖 Sending Request to AI: ${endpoint}`);
+        console.log(`📸 Image URL: ${imageUrl}`);
+        
+        // ส่ง URL ไปให้ Python (key ต้องตรงกับ Pydantic Model: image_url)
+        const response = await axios.post(endpoint, { 
+            image_url: imageUrl 
         });
-        return r.data;
+
+        return response.data;
     } catch (error) {
-        console.error("❌ ติดต่อ AI Server ไม่ได้:", error.message);
-        throw error;
+        console.error("❌ AI Service Error:", error.message);
+        
+        if (error.response) {
+            console.error("   Server Response:", error.response.data);
+        }
+
+        // คืนค่า Default เพื่อให้ระบบหลักทำงานต่อได้โดยไม่ล่ม
+        return { 
+            rain_probability: 0, 
+            level: "AI Error (Connection Failed)",
+            error: true 
+        };
     }
 };
