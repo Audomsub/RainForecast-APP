@@ -2,27 +2,43 @@ from PIL import Image
 import torchvision.transforms as transforms
 import torch
 
+# ค่ามาตรฐานสำหรับ Normalize (ImageNet Stats)
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
+def get_train_transforms():
+    """
+    ฟังก์ชันสำหรับ Data Augmentation ตอน Train โมเดล
+    """
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomRotation(degrees=15),  # หมุนภาพเล็กน้อย
+        transforms.RandomHorizontalFlip(),      # กลับซ้ายขวา
+        transforms.ColorJitter(brightness=0.1), # ปรับแสงนิดหน่อย (อย่าเยอะเดี๋ยวสีเพี้ยน)
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    ])
+
 def process_radar_image(image_path):
+    """
+    ฟังก์ชันสำหรับ Inference (ใช้งานจริง)
+    """
     try:
-        # 1. โหลดรูปภาพ
-        img = Image.open(image_path).convert("L") # แปลงเป็นขาวดำ (Grayscale)
+        # 1. โหลดรูปภาพเป็น RGB (สำคัญมากสำหรับ ResNet + Attention)
+        img = Image.open(image_path).convert("RGB")
         
-        # 2. Crop เอาเฉพาะส่วนข้อมูลเรดาร์ (ตัดด้านขวาออกเพื่อให้ได้ 800x800)
-        # กรมฝนหลวงมักมี Sidebar ขวามือ เราจะเอา 800x800 ซ้ายบน
-        # Box: (left, upper, right, lower)
+        # 2. Crop เอาเฉพาะส่วนเรดาร์ (800x800)
         width, height = img.size
-        
-        # ถ้าภาพเล็กกว่า 800x800 ให้ Resize แทนการ Crop
         if width < 800 or height < 800:
             img = img.resize((800, 800))
         else:
             img = img.crop((0, 0, 800, 800))
             
-        # 3. แปลงเป็น Tensor และ Normalize
+        # 3. แปลงเป็น Tensor
         transform = transforms.Compose([
-            transforms.Resize((224, 224)), # ย่อลงเพื่อเข้า Model (CNN ทั่วไปชอบขนาดนี้)
+            transforms.Resize((224, 224)), # ResNet ชอบขนาดนี้
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5])
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         ])
         
         input_tensor = transform(img).unsqueeze(0) # เพิ่ม Batch dimension

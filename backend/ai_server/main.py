@@ -2,46 +2,46 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import torch
 import os
-import requests # ต้องเพิ่ม library นี้ใน requirements.txt
+import requests 
 import tempfile
-from model import SimpleRainCNN
+# เปลี่ยน model import เป็น class ใหม่
+from model import RainHybridModel
 from preprocess import process_radar_image
 
 app = FastAPI()
 
-# โหลด Model
-model = SimpleRainCNN()
+# โหลด Model (Hybrid)
+print("⏳ Loading Hybrid Model (ResNet18 + CBAM)...")
+# โหลด weights ImageNet มาเป็นฐานความรู้
+model = RainHybridModel(pretrained=True) 
 model.eval()
+print("✅ Model loaded successfully!")
 
-# เปลี่ยนชื่อรับตัวแปรเป็น image_url ให้สื่อความหมาย
 class PredictRequest(BaseModel):
     image_url: str
 
 @app.get("/")
 def read_root():
-    return {"status": "AI Service is running"}
+    return {"status": "AI Service (Hybrid CNN+Attention) is running"}
 
 @app.post("/predict")
 def predict(req: PredictRequest):
     temp_file_path = None
     
     try:
-        # 1. ดาวน์โหลดรูปภาพจาก URL
+        # 1. ดาวน์โหลดรูปภาพ
         print(f"📥 Downloading image from: {req.image_url}")
-        response = requests.get(req.image_url, timeout=15) # timeout 15 วินาที
+        response = requests.get(req.image_url, timeout=15)
         
         if response.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to download image from URL")
 
-        # 2. สร้างไฟล์ชั่วคราว (Temp file) เพื่อบันทึกรูป
-        # delete=False เพื่อให้เราปิดไฟล์แล้วส่ง path ไปให้ preprocess ได้
+        # 2. สร้างไฟล์ชั่วคราว
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
             tmp.write(response.content)
             temp_file_path = tmp.name
         
-        print(f"💾 Saved temp image to: {temp_file_path}")
-
-        # 3. Preprocess (ส่ง Path ของไฟล์ชั่วคราวไปให้ฟังก์ชันเดิม)
+        # 3. Preprocess (RGB)
         input_tensor = process_radar_image(temp_file_path)
         
         if input_tensor is None:
@@ -68,9 +68,10 @@ def predict(req: PredictRequest):
             level = "Very Heavy Rain (ฝนตกหนักมาก)"
 
         return {
+            "model_type": "Hybrid (CNN + Attention)",
             "rain_probability": round(prob_percent, 2),
             "level": level,
-            "processed_size": "800x800 (Cropped)"
+            "processed_size": "800x800 -> 224x224 (RGB)"
         }
 
     except Exception as e:
@@ -78,7 +79,6 @@ def predict(req: PredictRequest):
         raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        # 6. ลบไฟล์ชั่วคราวทิ้งเสมอ ไม่ว่าจะเกิด Error หรือไม่ (Clean up)
+        # 6. ลบไฟล์ชั่วคราว
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
-            print(f"🗑️ Deleted temp file: {temp_file_path}")
