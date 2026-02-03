@@ -1,4 +1,3 @@
-// backend/server/app.js
 const dns = require('dns');
 try {
     dns.setDefaultResultOrder('ipv4first');
@@ -18,7 +17,7 @@ app.use(express.json());
 require('./scheduler');
 app.use(cors());
 
-// Routes
+// เชื่อมต่อ Routes ต่างๆ
 app.use("/api/radar", require("./routes/radar.routes"));
 app.use("/api/ai", require("./routes/ai.routes"));
 app.use("/api/map", require("./routes/map.routes"));
@@ -29,7 +28,7 @@ app.get("/api/health", (req, res) => {
     res.json({ status: "OK", service: "RainForecast Backend MVC" });
 });
 
-// แก้ไขส่วนการ Listen Port เพื่อรองรับ Render
+// แก้ไขให้ใช้ PORT จาก Environment Variable ของ Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API running on port: ${PORT}`);
