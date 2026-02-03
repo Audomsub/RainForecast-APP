@@ -1,23 +1,15 @@
 const cron = require('node-cron');
-const radarService = require('./service/radar.service');
-const Radar = require('./model/radar.model');
+const aiService = require('./service/ai.service');
 
-console.log("⏳ Scheduler System: เริ่มต้นระบบตั้งเวลา...");
-
-// ตั้งเวลาให้ทำงานทุกๆ 15 นาที
-// ความหมายของ '*/15 * * * *' คือ: ทุกนาทีที่หาร 15 ลงตัว (นาทีที่ 0, 15, 30, 45)
+// ตั้งเวลาให้ตรวจสอบและพยากรณ์ทุก 15 นาที (หรือตามความถี่ที่ภาพเรดาร์อัปเดต)
 cron.schedule('*/6 * * * *', async () => {
-    console.log(`⏰ [${new Date().toLocaleTimeString()}] เริ่มทำงาน Auto Fetch Radar...`);
-    
+    console.log("⏰ Running Scheduled Rain Forecast...");
     try {
-        // 1. เรียก Service ดึงรูปจากกรมฝนหลวง
-        const data = await radarService.fetchRadarImage();
+        const result = await aiService.getLatestPrediction();
+        console.log(`✅ Forecast Result: ${result.level} (Prob: ${result.rain_probability}%)`);
         
-        // 2. บันทึกลง Database
-        const saved = await Radar.create(data);
-        
-        console.log(`✅ Auto Fetch สำเร็จ! บันทึกเรียบร้อย (ID: ${saved.id})`);
+        // ตรงนี้สามารถเพิ่ม Code บันทึกผลลงฐานข้อมูล Prediction ได้
     } catch (error) {
-        console.error("❌ Auto Fetch ล้มเหลว:", error.message);
+        console.error("Error in Scheduler:", error.message);
     }
 });
