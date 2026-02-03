@@ -1,10 +1,11 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http; // ✅ เพิ่มบรรทัดนี้แล้วจะหายแดงทันที!
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ 1. Import Supabase
-
+final String backendUrl = 'https://rainforecast-app.onrender.com/api';
 class DBService {
   static Database? _db;
   
@@ -224,4 +225,33 @@ class DBService {
     );
     return result.isNotEmpty;
   }
+
+  Future<void> sendHeartbeat(String deviceId) async {
+    try {
+      final url = Uri.parse('$backendUrl/admin/track-online'); //
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'deviceId': deviceId}),
+      );
+    } catch (error) {
+      print(" Heartbeat Error: $error"); 
+    }
+  }
+
+  Future<int> getOnlineCount() async {
+    try {
+      final url = Uri.parse('$backendUrl/admin/online-count'); 
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body)['online_count']; 
+      }
+    } catch (error) {
+      print(" Online Count Error: $error");
+    }
+    return 0;
+  }
+
+  
 }
+

@@ -4,6 +4,26 @@ const supabaseUrl = 'https://okopzoltzofgefsihcvb.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rb3B6b2x0em9mZ2Vmc2loY3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMjg3ODYsImV4cCI6MjA4NDgwNDc4Nn0.lcFvT2doqDsDlru5mhkrDcG1dzEdRUCpkAFMqq4futw';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+let onlineUsers = new Map();
+
+exports.trackOnline = (req, res) => {
+    const {deviceId} = req.body;
+    if(deviceId){
+        onlineUsers.set(deviceId, Date.now());
+    }
+    res.status(200).json({success: true});
+
+}
+
+exports.getOnlineCount = (req, res) => {
+    const now = Date.now();
+    const timeout = 60000;
+    for (let [id, lastSeen] of onlineUsers) {
+        if(now - lastSeen > timeout) onlineUsers.delete(id);
+    }
+    res.json({online_count: onlineUsers.size});
+};
+
 exports.loginAdmin = async (req, res) => {
     try {
         const { email, password } = req.body; 
@@ -38,3 +58,5 @@ exports.loginAdmin = async (req, res) => {
         });
     }
 };
+
+

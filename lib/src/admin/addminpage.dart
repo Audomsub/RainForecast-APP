@@ -1,4 +1,4 @@
-import 'dart:async'; // เพิ่ม import timer
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:rainforecast_app/src/service/db_service.dart';
@@ -13,11 +13,13 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTickerProviderStateMixin {
   final DBService _dbService = DBService();
   late TabController _tabController;
-  Timer? _timer; // ตัวแปร Timer
+  Timer? _timer;
 
   List<Map<String, dynamic>> _reports = [];
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _stats = [];
+  int _onlineCount = 0; 
+  final String _adminDeviceId = "admin_${DateTime.now().millisecondsSinceEpoch}";
 
   @override
   void initState() {
@@ -25,15 +27,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     _tabController = TabController(length: 3, vsync: this);
     _loadAllData();
     
-    // ✅ เริ่มการทำงานแบบ Real-time (โหลดใหม่ทุก 3 วินาที)
-    _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (mounted) _loadAllData();
+ 
+    _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (mounted) {
+        await _dbService.sendHeartbeat(_adminDeviceId); 
+        _loadAllData();
+      }
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel(); // ✅ ยกเลิก Timer เมื่อปิดหน้า
+    _timer?.cancel(); 
     _tabController.dispose();
     super.dispose();
   }
@@ -42,18 +47,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     final reports = await _dbService.getAllReportsForAdmin();
     final users = await _dbService.getUniqueUsers();
     final stats = await _dbService.getHourlyStats();
+    final online = await _dbService.getOnlineCount();
     
     if (mounted) {
       setState(() {
         _reports = reports;
         _users = users;
         _stats = stats;
+        _onlineCount = online;
       });
     }
   }
-
-  // ... (ฟังก์ชัน _deleteReport, _editReport และ Widget build ใช้โค้ดเดิมได้เลยครับ)
-  // ... (เพียงแค่เปลี่ยน ID ใน _deleteReport, _editReport ให้ถูกต้องตามรอบก่อนหน้านี้)
 
   Future<void> _deleteReport(int id) async {
     await _dbService.deleteReport(id);
@@ -123,6 +127,23 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
+        
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                const Icon(Icons.circle, color: Colors.green, size: 10), 
+                const SizedBox(width: 8),
+                Text(
+                  "Online: $_onlineCount", 
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
+                ),
+              ],
+            ),
+          ),
+        ],
+        
         bottom: TabBar(
           controller: _tabController,
           labelColor: const Color(0xFF6C63FF),
@@ -135,6 +156,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
           ],
         ),
       ),
+      
       body: TabBarView(
         controller: _tabController,
         children: [
@@ -169,7 +191,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                 Text("User: ${report['reporter_name']}"),
                 Text(report['description'] ?? "-"),
                 if (report['image_path'] != null)
-                   Text("📷 มีรูปภาพแนบ", style: TextStyle(color: Colors.blue[700], fontSize: 12)),
+                   Text(" มีรูปภาพแนบ", style: TextStyle(color: Colors.blue[700], fontSize: 12)),
               ],
             ),
             trailing: Row(
@@ -257,7 +279,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                     const SizedBox(height: 5),
                     Container(
                       width: 20,
-                      height: 200 * heightFactor + 10,
+                      height: 180 * heightFactor + 10,
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: count > 0 ? const Color(0xFF6C63FF) : Colors.grey[300],

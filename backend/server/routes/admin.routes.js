@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-// ดึงฟังก์ชัน loginAdmin มาจาก controller
-const { loginAdmin } = require("../controller/admincontroller");
+const { loginAdmin, trackOnline, getOnlineCount } = require("../controller/admincontroller");
 
-// กำหนด Route สำหรับ Login
+
 router.post("/login", loginAdmin);
-
+router.post("/track-online",trackOnline);
+router.get("/online-count",getOnlineCount);
 module.exports = router;
