@@ -84,7 +84,7 @@ exports.autoFetchRadar = async () => {
             .insert([{ 
                 station: 'rongkwang', 
                 filename: filename, 
-                url: publicUrl, 
+                filepath: publicUrl,  // ✅ แก้เป็น filepath ให้ตรงกับ Database
                 timestamp: new Date() 
             }])
             .select();
@@ -97,10 +97,11 @@ exports.autoFetchRadar = async () => {
         // =========================================================
         console.log("🤖 กำลังส่งภาพไปให้ AI พยากรณ์...");
         
+        // เรียก AI โดยใช้ publicUrl (ที่เป็น filepath ใน DB)
         const predictionResult = await aiService.getPrediction(publicUrl);
         console.log("🧠 ผลการพยากรณ์:", predictionResult);
 
-        // (Optional) ถ้าคุณมีตาราง predictions ก็บันทึกผลลง DB ตรงนี้ได้เลย
+        // (Optional) บันทึกผลพยากรณ์ ถ้ามีตารางรองรับ
         // await supabase.from('predictions').insert([...]);
 
         return insertData;
@@ -110,5 +111,5 @@ exports.autoFetchRadar = async () => {
     }
 };
 
-// ฟังก์ชัน 3: Manual Fetch (เรียกโดย API Controller)
+// ฟังก์ชัน 3: Manual Fetch
 exports.fetchRadarImage = exports.getLatestRadarImage;
