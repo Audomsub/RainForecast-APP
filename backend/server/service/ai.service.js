@@ -1,24 +1,21 @@
 const axios = require("axios");
-const Radar = require("../model/radar.model"); // สมมติชื่อ model ตามโครงสร้างโปรเจกต์
+const Radar = require("../model/radar.model"); //
 require('dotenv').config();
 
-exports.getLatestPrediction = async () => { 
+exports.getPrediction = async (imageUrl) => {
+    const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+    const response = await axios.post(`${aiUrl}/predict`, { image_url: imageUrl });
+    return response.data;
+};
+
+exports.getLatestPrediction = async () => {
     try {
-        // ดึงภาพเรดาร์ล่าสุดจากฐานข้อมูล
-        const latestRadar = await Radar.findOne().sort({ createdAt: -1 });
-        
-        if (!latestRadar || !latestRadar.imageUrl) {
-            throw new Error("ไม่พบภาพเรดาร์ในระบบ");
-        }
+        const latestRadar = await Radar.findOne().sort({ createdAt: -1 }); // ดึงภาพล่าสุด
+        if (!latestRadar) throw new Error("No radar images found");
 
-        const aiUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
-        const response = await axios.post(`${aiUrl}/predict`, { 
-            image_url: latestRadar.imageUrl 
-        });
-
-        return response.data;
+        return await this.getPrediction(latestRadar.imageUrl);
     } catch (error) {
-        console.error("❌ AI Service Error:", error.message);
-        return { rain_probability: 0, level: "AI Error", error: true };
+        console.error("❌ Service Error:", error.message);
+        return { rain_probability: 0, level: "Error", error: true };
     }
 };

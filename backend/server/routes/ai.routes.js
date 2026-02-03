@@ -1,9 +1,10 @@
-const router = require("express").Router();
-const aiController = require("../controller/ai.controller");
+const express = require('express');
+const router = express.Router();
+const aiController = require('../controller/ai.controller');
 
-
-router.post("/predict", aiController.predict);
-router.get("/history", aiController.history);
-
+// ตรวจสอบว่าชื่อฟังก์ชันใน controller ตรงกับที่เรียกใช้
+router.post('/predict', aiController.predict); 
+router.get('/predict-latest', aiController.predictLatest); // เพิ่ม Route สำหรับพยากรณ์ภาพล่าสุด
+router.get('/history', aiController.history);
 
 module.exports = router;

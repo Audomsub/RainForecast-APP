@@ -1,15 +1,13 @@
 const cron = require('node-cron');
-const aiService = require('./service/ai.service');
+const aiController = require('./controller/ai.controller');
 
-// ตั้งเวลาให้ตรวจสอบและพยากรณ์ทุก 15 นาที (หรือตามความถี่ที่ภาพเรดาร์อัปเดต)
+// รันทุก 15 นาที
 cron.schedule('*/6 * * * *', async () => {
-    console.log("⏰ Running Scheduled Rain Forecast...");
+    console.log("⏰ [Scheduler] Starting automated rain forecast...");
     try {
-        const result = await aiService.getLatestPrediction();
-        console.log(`✅ Forecast Result: ${result.level} (Prob: ${result.rain_probability}%)`);
-        
-        // ตรงนี้สามารถเพิ่ม Code บันทึกผลลงฐานข้อมูล Prediction ได้
-    } catch (error) {
-        console.error("Error in Scheduler:", error.message);
+        const result = await aiController.predictLatest();
+        console.log(`✅ Forecast Done: Prob ${result.rain_probability}% - ${result.level}`);
+    } catch (err) {
+        console.error("❌ Scheduler Error:", err.message);
     }
 });
