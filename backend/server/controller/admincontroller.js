@@ -1,19 +1,22 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = 'https://okopzoltzofgefsihcvb.supabase.co';
+// ควรย้าย Key ไปไว้ใน .env แต่ใส่ไว้ตรงนี้ก่อนตามเดิม
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rb3B6b2x0em9mZ2Vmc2loY3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMjg3ODYsImV4cCI6MjA4NDgwNDc4Nn0.lcFvT2doqDsDlru5mhkrDcG1dzEdRUCpkAFMqq4futw';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 let onlineUsers = new Map();
 
 exports.trackOnline = (req, res) => {
-    const {deviceId} = req.body;
+    // ✅ แก้ไข: ใช้ (req.body || {}) เพื่อป้องกัน crash ถ้า body เป็น undefined
+    const { deviceId } = req.body || {}; 
+    
     if(deviceId){
         onlineUsers.set(deviceId, Date.now());
     }
+    // ตอบกลับเสมอแม้ไม่มี deviceId เพื่อไม่ให้ Client ค้าง
     res.status(200).json({success: true});
-
-}
+};
 
 exports.getOnlineCount = (req, res) => {
     const now = Date.now();
@@ -26,7 +29,15 @@ exports.getOnlineCount = (req, res) => {
 
 exports.loginAdmin = async (req, res) => {
     try {
-        const { email, password } = req.body; 
+        // ✅ แก้ไข: เพิ่มความปลอดภัยตรงนี้ด้วย
+        const { email, password } = req.body || {}; 
+
+        if (!email || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Email and password are required" 
+            });
+        }
 
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
@@ -58,5 +69,3 @@ exports.loginAdmin = async (req, res) => {
         });
     }
 };
-
-
