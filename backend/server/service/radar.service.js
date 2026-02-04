@@ -62,7 +62,12 @@ exports.getLatestRadarImage = async () => {
         const publicUrl = publicUrlData.publicUrl;
         console.log("☁️ อัปโหลดเสร็จสิ้น:", publicUrl);
 
-        return { filename, publicUrl, source_url: imageUrl };
+        // ✅ แก้ไข: ส่ง key ชื่อ 'filepath' เพื่อให้ตรงกับ Model และ Database
+        return { 
+            filename, 
+            filepath: publicUrl, 
+            source_url: imageUrl 
+        };
 
     } catch (error) {
         console.error("❌ Error in getLatestRadarImage:", error.message);
@@ -75,16 +80,16 @@ exports.autoFetchRadar = async () => {
     console.log(`⏰ [${new Date().toLocaleTimeString()}] เริ่มทำงาน Auto Fetch Radar...`);
     
     try {
-        // 1. ดึงภาพและ Upload
-        const { filename, publicUrl } = await exports.getLatestRadarImage();
+        // 1. ดึงภาพและ Upload (รับค่า filepath ที่แก้แล้ว)
+        const { filename, filepath } = await exports.getLatestRadarImage();
 
-        // 2. บันทึกลง Database
+        // 2. บันทึกลง Database (ใช้ filepath)
         const { data: insertData, error: dbError } = await supabase
             .from('radar_images')
             .insert([{ 
                 station: 'rongkwang', 
                 filename: filename, 
-                filepath: publicUrl,  // ✅ แก้เป็น filepath ให้ตรงกับ Database
+                filepath: filepath,  // ✅ ใช้ filepath
                 timestamp: new Date() 
             }])
             .select();
@@ -97,12 +102,9 @@ exports.autoFetchRadar = async () => {
         // =========================================================
         console.log("🤖 กำลังส่งภาพไปให้ AI พยากรณ์...");
         
-        // เรียก AI โดยใช้ publicUrl (ที่เป็น filepath ใน DB)
-        const predictionResult = await aiService.getPrediction(publicUrl);
+        // เรียก AI โดยใช้ filepath
+        const predictionResult = await aiService.getPrediction(filepath);
         console.log("🧠 ผลการพยากรณ์:", predictionResult);
-
-        // (Optional) บันทึกผลพยากรณ์ ถ้ามีตารางรองรับ
-        // await supabase.from('predictions').insert([...]);
 
         return insertData;
 
