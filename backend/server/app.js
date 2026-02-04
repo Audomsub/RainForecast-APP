@@ -48,9 +48,9 @@ app.get("/api/health", (req, res) => {
 
 /* ================= Server ================= */
 
-// Render จะ inject PORT มาให้
-const PORT = process.env.PORT || 3000;
 
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 API running on port: ${PORT}`);
 });
