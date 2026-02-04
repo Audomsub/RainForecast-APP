@@ -1,14 +1,11 @@
 const radarService = require("../service/radar.service");
+const aiService = require("../service/ai.service"); // ✅ เรียกใช้ AI Service
 const Radar = require("../model/radar.model");
 
 exports.fetchRadar = async(req,res)=>{
     try{
-        // 1. Service ไปดึงรูปมา และ return { filename, filepath, source_url }
         const data = await radarService.fetchRadarImage();
-        
-        // 2. Model นำไปบันทึก (ตอนนี้มี filepath แล้ว ไม่ error)
         const saved = await Radar.create(data);
-        
         res.json(saved);
     } catch(e) {
         res.status(500).json({error:e.message});
@@ -33,4 +30,32 @@ exports.getById = async(req,res)=>{
 exports.deleteById = async(req,res)=>{
     await Radar.delete(req.params.id);
     res.json({status:"deleted"});
+};
+
+// ==========================================
+// 🚀 เพิ่ม Method ใหม่
+// ==========================================
+
+exports.getLatestOverlay = async (req, res) => {
+    try {
+        const latest = await Radar.getLatest();
+        if (!latest) return res.status(404).json({ error: "No radar data available" });
+
+        const overlayData = await aiService.getOverlay(latest.filepath);
+        res.json(overlayData);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+};
+
+exports.getLatestHeatmap = async (req, res) => {
+    try {
+        const latest = await Radar.getLatest();
+        if (!latest) return res.status(404).json({ error: "No radar data available" });
+
+        const heatmapData = await aiService.getHeatmap(latest.filepath);
+        res.json(heatmapData);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 };

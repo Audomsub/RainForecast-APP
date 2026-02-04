@@ -4,15 +4,14 @@ import torch
 import os
 import requests 
 import tempfile
-# เปลี่ยน model import เป็น class ใหม่
 from model import RainHybridModel
-from preprocess import process_radar_image
+# ✅ เพิ่ม import ฟังก์ชันใหม่
+from preprocess import process_radar_image, create_radar_overlay, extract_rain_data 
 
 app = FastAPI()
 
 # โหลด Model (Hybrid)
 print("⏳ Loading Hybrid Model (ResNet18 + CBAM)...")
-# โหลด weights ImageNet มาเป็นฐานความรู้
 model = RainHybridModel(pretrained=True) 
 model.eval()
 print("✅ Model loaded successfully!")
@@ -27,45 +26,33 @@ def read_root():
 @app.post("/predict")
 def predict(req: PredictRequest):
     temp_file_path = None
-    
     try:
-        # 1. ดาวน์โหลดรูปภาพ
         print(f"📥 Downloading image from: {req.image_url}")
         response = requests.get(req.image_url, timeout=15)
         
         if response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Failed to download image from URL")
+            raise HTTPException(status_code=400, detail="Failed to download image")
 
-        # 2. สร้างไฟล์ชั่วคราว
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
             tmp.write(response.content)
             temp_file_path = tmp.name
         
-        # 3. Preprocess (RGB)
         input_tensor = process_radar_image(temp_file_path)
         
         if input_tensor is None:
             raise HTTPException(status_code=500, detail="Image processing failed")
 
-        # 4. Predict
         with torch.no_grad():
             output = model(input_tensor)
             probability = output.item() 
 
-        # 5. ตีความผลลัพธ์
         prob_percent = probability * 100
         level = "Unknown"
-        
-        if prob_percent < 10:
-            level = "No Rain (ไม่มีฝน)"
-        elif prob_percent < 30:
-            level = "Light Rain (ฝนเล็กน้อย)"
-        elif prob_percent < 60:
-            level = "Moderate Rain (ฝนปานกลาง)"
-        elif prob_percent < 85:
-            level = "Heavy Rain (ฝนตกหนัก)"
-        else:
-            level = "Very Heavy Rain (ฝนตกหนักมาก)"
+        if prob_percent < 10: level = "No Rain (ไม่มีฝน)"
+        elif prob_percent < 30: level = "Light Rain (ฝนเล็กน้อย)"
+        elif prob_percent < 60: level = "Moderate Rain (ฝนปานกลาง)"
+        elif prob_percent < 85: level = "Heavy Rain (ฝนตกหนัก)"
+        else: level = "Very Heavy Rain (ฝนตกหนักมาก)"
 
         return {
             "model_type": "Hybrid (CNN + Attention)",
@@ -77,8 +64,22 @@ def predict(req: PredictRequest):
     except Exception as e:
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-        
     finally:
-        # 6. ลบไฟล์ชั่วคราว
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+# ==========================================
+# 🚀 API ใหม่สำหรับ Overlay และ Heatmap
+# ==========================================
+
+@app.post("/overlay")
+def get_overlay(req: PredictRequest): # ใช้ PredictRequest เพราะมี image_url เหมือนกัน
+    result = create_radar_overlay(req.image_url)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Failed to create overlay")
+    return {"type": "overlay", "data": result}
+
+@app.post("/heatmap")
+def get_heatmap(req: PredictRequest):
+    data = extract_rain_data(req.image_url)
+    return {"type": "heatmap_points", "count": len(data), "points": data}
