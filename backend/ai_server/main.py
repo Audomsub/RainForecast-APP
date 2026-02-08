@@ -1,85 +1,92 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
-import cv2
-import base64
 import os
-
+import glob
 from model import RainForecastModel
-from preprocess import process_radar_sequence
+import dataset_tool  # ✅ เรียกใช้ไฟล์ dataset_tool.py
 
-app = FastAPI()
-
-# --- 1. โหลด Model ที่ Train แล้ว ---
-print("⏳ Loading Trained RainForecast Model...")
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = RainForecastModel().to(device)
-
+# --- CONFIG ---
+DATASET_DIR = "rain_dataset"
 MODEL_PATH = "rain_model_best.pth"
-if os.path.exists(MODEL_PATH):
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-    print(f"✅ Loaded weights from {MODEL_PATH}")
-else:
-    print("⚠️ Warning: Model weights not found, using random weights (Please train first!)")
+BATCH_SIZE = 2
+EPOCHS = 75 # ลดจำนวนรอบลงเพื่อให้ Auto Train เสร็จไวขึ้น (ปรับเพิ่มได้)
+LEARNING_RATE = 1e-4
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model.eval()
+class RainDataset(Dataset):
+    def __init__(self, data_dir):
+        self.files = sorted(glob.glob(os.path.join(data_dir, "*.npz")))
 
-class PredictRequest(BaseModel):
-    image_urls: List[str]
+    def __len__(self):
+        return len(self.files)
 
-@app.post("/predict")
-def predict(req: PredictRequest):
-    if len(req.image_urls) != 5:
-        raise HTTPException(status_code=400, detail="Model requires exactly 5 images.")
+    def __getitem__(self, idx):
+        try:
+            data = np.load(self.files[idx])
+            x = torch.from_numpy(data['x']).float()
+            y = torch.from_numpy(data['y']).float()
+            return x, y
+        except:
+            return torch.zeros(5, 1, 800, 800), torch.zeros(1, 800, 800)
 
+def run_training():
+    print("Starting Auto-Training Process...")
+    
+    # 1. สร้าง Dataset ใหม่จากรูปปัจจุบัน
     try:
-        # 1. Preprocess
-        input_tensor = process_radar_sequence(req.image_urls)
-        if input_tensor is None:
-            raise HTTPException(status_code=500, detail="Image processing failed")
-        
-        input_tensor = input_tensor.to(device)
-
-        # 2. Inference
-        with torch.no_grad():
-            output_tensor = model(input_tensor) # (1, 1, 800, 800)
-
-        # 3. Post-processing
-        prediction_map = output_tensor.squeeze().cpu().numpy() # 0.0 - 1.0
-        
-        # --- คำนวณโอกาสฝนตก (Rain Probability) ---
-        # หาค่าสูงสุดในภาพ (จุดที่ฝนตกหนักสุด)
-        max_rain_intensity = np.max(prediction_map)
-        # หาค่าเฉลี่ยของพื้นที่ที่มีฝน (ตัดพื้นหลังออก)
-        rain_pixels = prediction_map[prediction_map > 0.05] # นับเฉพาะจุดที่น่าจะมีฝน
-        avg_rain_intensity = np.mean(rain_pixels) if len(rain_pixels) > 0 else 0.0
-        
-        # คำนวณ % โอกาสตก (ให้น้ำหนักค่าสูงสุดมากหน่อย)
-        prob_percent = min(max_rain_intensity * 100, 100.0)
-        
-        # ระบุระดับความรุนแรง
-        level = "No Rain"
-        if prob_percent > 80: level = "⛈️ Very Heavy (ฝนตกหนักมาก)"
-        elif prob_percent > 60: level = "🌧️ Heavy (ฝนตกหนัก)"
-        elif prob_percent > 40: level = "🌦️ Moderate (ฝนปานกลาง)"
-        elif prob_percent > 10: level = "☁️ Light Rain (ฝนเล็กน้อย)"
-
-        # สร้างภาพ Heatmap
-        pred_img_byte = (prediction_map * 255).astype(np.uint8)
-        pred_colored = cv2.applyColorMap(pred_img_byte, cv2.COLORMAP_JET)
-        _, buffer = cv2.imencode('.png', pred_colored)
-        forecast_base64 = base64.b64encode(buffer).decode('utf-8')
-
-        return {
-            "rain_probability_percent": round(float(prob_percent), 2),
-            "rain_intensity_avg": round(float(avg_rain_intensity), 4),
-            "level": level,
-            "forecast_image": forecast_base64,
-            "accuracy_estimate": "Based on trained model (Approx 85-95%)" # ค่านี้ได้จากการ Train
-        }
-
+        dataset_tool.create_dataset()
     except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Dataset Creation Failed: {e}")
+        return False
+
+    # 2. ตรวจสอบข้อมูล
+    dataset = RainDataset(DATASET_DIR)
+    if len(dataset) < 2:
+        print("Not enough data to train (Need at least 2 sequences).")
+        return False
+
+    print(f"Training on {DEVICE} with {len(dataset)} samples.")
+    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    
+    # 3. โหลดโมเดล
+    model = RainForecastModel().to(DEVICE)
+    
+    # ถ้ามีโมเดลเดิม ให้โหลดมาเทรนต่อ (Incremental Learning)
+    if os.path.exists(MODEL_PATH):
+        try:
+            model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+            print("Loaded existing weights. Fine-tuning...")
+        except:
+            print("Existing weights incompatible. Starting fresh.")
+
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    criterion = nn.MSELoss()
+
+    # 4. ลูปเทรน
+    model.train()
+    for epoch in range(EPOCHS):
+        total_loss = 0
+        for x, y in loader:
+            x, y = x.to(DEVICE), y.to(DEVICE)
+            
+            optimizer.zero_grad()
+            output = model(x)
+            loss = criterion(output, y)
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+        
+        avg_loss = total_loss / len(loader)
+        print(f"   Epoch {epoch+1}/{EPOCHS} - Loss: {avg_loss:.6f}")
+
+    # 5. บันทึกโมเดลทับไฟล์เดิม
+    torch.save(model.state_dict(), MODEL_PATH)
+    print(f"Model saved to {MODEL_PATH}")
+    return True
+
+if __name__ == "__main__":
+    run_training()

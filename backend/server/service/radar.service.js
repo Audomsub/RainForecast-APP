@@ -1,86 +1,81 @@
 const axios = require("axios");
 const { createClient } = require('@supabase/supabase-js');
 const https = require("https");
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
-
-// นำเข้า AI Service
 const aiService = require('./ai.service'); 
 
-// ตั้งค่า Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const API_URL = "https://file.royalrain.go.th/opendata/radar_data/cappi/api.php?station=rongkwang";
-
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-// ... (ส่วนของ exports.getLatestRadarImage และ getLastNRadarImages คงเดิม) ...
-exports.getLatestRadarImage = async () => { /* ...โค้ดเดิม... */ };
+// Path สำหรับเก็บรูปไป Train (ต้องชี้ไปหา folder ของ AI Server)
+const AI_RAW_DATA_PATH = path.join(__dirname, '../../ai_server/raw_radar_images');
+if (!fs.existsSync(AI_RAW_DATA_PATH)) fs.mkdirSync(AI_RAW_DATA_PATH, { recursive: true });
 
-// ✅ คงฟังก์ชันนี้ไว้ (ถ้ายังไม่มี ให้เพิ่มตามที่ผมให้ไปรอบก่อน)
-exports.getLastNRadarImages = async (n = 5) => {
+exports.getLatestRadarImage = async () => {
     try {
-        const { data, error } = await supabase
-            .from('radar_images')
-            .select('filepath')
-            .order('timestamp', { ascending: false })
-            .limit(n);
+        const apiRes = await axios.get(API_URL, { httpsAgent: agent, timeout: 10000 });
+        let data = apiRes.data.data || apiRes.data.result;
+        if (!data || data.length === 0) throw new Error("No API Data");
 
-        if (error || data.length < n) return [];
-        return data.map(row => row.filepath).reverse();
-    } catch (e) {
-        return [];
-    }
-};
-
-// 🔴 แก้ไขฟังก์ชันนี้: ให้ Return ค่าที่ Scheduler ต้องการ
-exports.autoFetchRadar = async () => {
-    console.log(`⏰ [${new Date().toLocaleTimeString()}] Auto Fetch Radar...`);
-    
-    try {
-        // 1. ดึงภาพและ Upload
-        const { filename, filepath } = await exports.getLatestRadarImage();
-
-        // 2. บันทึกลง Database
-        const { data: insertData, error: dbError } = await supabase
-            .from('radar_images')
-            .insert([{ 
-                station: 'rongkwang', 
-                filename: filename, 
-                filepath: filepath, 
-                timestamp: new Date() 
-            }])
-            .select();
-
-        if (dbError) throw dbError;
+        const latest = data[data.length - 1];
+        let imageUrl = latest.url.replace("http://", "https://");
         
-        // 3. เตรียมข้อมูลและส่งให้ AI
-        let predictionResult = { rain_probability: 0, level: "Waiting for data" };
-        const sequenceUrls = await exports.getLastNRadarImages(5);
-        
-        if (sequenceUrls.length === 5) {
-            // เรียก AI
-            predictionResult = await aiService.getPrediction(sequenceUrls);
-            console.log("🧠 AI Prediction:", predictionResult.level);
-        }
+        // Download Image
+        const imgRes = await axios.get(imageUrl, {
+            responseType: "arraybuffer",
+            timeout: 60000,
+            httpsAgent: agent
+        });
 
-        // ✅ สำคัญ: ต้อง Return Object ที่มีโครงสร้างนี้กลับไป เพื่อไม่ให้ Scheduler Error
-        return {
-            success: true,
-            rain_probability: predictionResult.rain_probability,
-            level: predictionResult.level,
-            filepath: filepath,
-            db_id: insertData[0].id
-        };
+        const filename = `radar_${Date.now()}.png`;
+
+        // 1. Save Local for Training
+        fs.writeFileSync(path.join(AI_RAW_DATA_PATH, filename), imgRes.data);
+
+        // 2. Upload to Supabase
+        const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('radar-images').upload(filename, imgRes.data, { contentType: 'image/png' });
+        
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage.from('radar-images').getPublicUrl(filename);
+        return { filename, filepath: publicUrlData.publicUrl };
 
     } catch (error) {
-        console.error(`❌ Auto Fetch Failed: ${error.message}`);
-        // ✅ Return Object เพื่อกันไม่ให้ Scheduler Crash
-        return { 
-            success: false, 
-            rain_probability: 0, 
-            level: "Error", 
-            error: error.message 
-        };
+        throw error;
     }
 };
 
-exports.fetchRadarImage = exports.getLatestRadarImage;
+exports.getLastNRadarImages = async (n = 5) => {
+    const { data } = await supabase.from('radar_images')
+        .select('filepath').order('timestamp', { ascending: false }).limit(n);
+    return data ? data.map(r => r.filepath).reverse() : [];
+};
+
+exports.autoFetchRadar = async () => {
+    let result = { success: false, rain_probability: 0, level: "Waiting" };
+    try {
+        const { filename, filepath } = await exports.getLatestRadarImage();
+        
+        // Save to DB
+        await supabase.from('radar_images').insert([{ 
+            station: 'rongkwang', filename, filepath, timestamp: new Date() 
+        }]);
+
+        // Prediction
+        const sequenceUrls = await exports.getLastNRadarImages(5);
+        if (sequenceUrls.length === 5) {
+            console.log("🤖 Predicting...");
+            const aiRes = await aiService.getPrediction(sequenceUrls);
+            result = { ...result, ...aiRes, success: true };
+            console.log(`🧠 Prediction: ${result.level} (${result.rain_probability}%)`);
+        }
+        return result;
+    } catch (error) {
+        console.error("Fetch Error:", error.message);
+        return { ...result, level: "Error" };
+    }
+};
