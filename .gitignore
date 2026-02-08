@@ -77,3 +77,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+
+
+raw_radar_images/
+rain_datasets/
