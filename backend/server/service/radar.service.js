@@ -1,72 +1,86 @@
 const axios = require("axios");
-const Radar = require("../model/radar.model"); 
+const { createClient } = require('@supabase/supabase-js');
+const https = require("https");
 require('dotenv').config();
 
-const getAIUrl = () => process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+// นำเข้า AI Service
+const aiService = require('./ai.service'); 
 
-exports.getPrediction = async (imageInput) => {
+// ตั้งค่า Supabase
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const API_URL = "https://file.royalrain.go.th/opendata/radar_data/cappi/api.php?station=rongkwang";
+
+const agent = new https.Agent({ rejectUnauthorized: false });
+
+// ... (ส่วนของ exports.getLatestRadarImage และ getLastNRadarImages คงเดิม) ...
+exports.getLatestRadarImage = async () => { /* ...โค้ดเดิม... */ };
+
+// ✅ คงฟังก์ชันนี้ไว้ (ถ้ายังไม่มี ให้เพิ่มตามที่ผมให้ไปรอบก่อน)
+exports.getLastNRadarImages = async (n = 5) => {
     try {
-        const aiUrl = getAIUrl();
-        let payload;
+        const { data, error } = await supabase
+            .from('radar_images')
+            .select('filepath')
+            .order('timestamp', { ascending: false })
+            .limit(n);
 
-        // ตรวจสอบว่าเป็น Array (Sequence 5 ภาพ) หรือ String (ภาพเดียว - กรณีเก่า)
-        if (Array.isArray(imageInput)) {
-            // สำหรับ Model ใหม่ (ConvLSTM)
-            payload = { image_urls: imageInput };
-        } else {
-            // กรณี Fallback หรือเรียกใช้แบบเดิม (อาจจะต้องแก้ให้ Python รองรับหรือแปลงเป็น Array)
-            // สมมติว่าส่งไปเป็น Array 1 ตัว หรือ Handle ตามความเหมาะสม
-            payload = { image_urls: [imageInput] }; 
-            // หมายเหตุ: ถ้า Model ฝั่ง Python บังคับ 5 ภาพ การส่ง 1 ภาพอาจจะ Error ได้
-            // ควรแน่ใจว่าเรียกฟังก์ชันนี้ด้วย Array 5 ตัวเสมอสำหรับ Model ใหม่
+        if (error || data.length < n) return [];
+        return data.map(row => row.filepath).reverse();
+    } catch (e) {
+        return [];
+    }
+};
+
+// 🔴 แก้ไขฟังก์ชันนี้: ให้ Return ค่าที่ Scheduler ต้องการ
+exports.autoFetchRadar = async () => {
+    console.log(`⏰ [${new Date().toLocaleTimeString()}] Auto Fetch Radar...`);
+    
+    try {
+        // 1. ดึงภาพและ Upload
+        const { filename, filepath } = await exports.getLatestRadarImage();
+
+        // 2. บันทึกลง Database
+        const { data: insertData, error: dbError } = await supabase
+            .from('radar_images')
+            .insert([{ 
+                station: 'rongkwang', 
+                filename: filename, 
+                filepath: filepath, 
+                timestamp: new Date() 
+            }])
+            .select();
+
+        if (dbError) throw dbError;
+        
+        // 3. เตรียมข้อมูลและส่งให้ AI
+        let predictionResult = { rain_probability: 0, level: "Waiting for data" };
+        const sequenceUrls = await exports.getLastNRadarImages(5);
+        
+        if (sequenceUrls.length === 5) {
+            // เรียก AI
+            predictionResult = await aiService.getPrediction(sequenceUrls);
+            console.log("🧠 AI Prediction:", predictionResult.level);
         }
 
-        const response = await axios.post(`${aiUrl}/predict`, payload);
-        return response.data;
+        // ✅ สำคัญ: ต้อง Return Object ที่มีโครงสร้างนี้กลับไป เพื่อไม่ให้ Scheduler Error
+        return {
+            success: true,
+            rain_probability: predictionResult.rain_probability,
+            level: predictionResult.level,
+            filepath: filepath,
+            db_id: insertData[0].id
+        };
 
-    } catch (e) {
-        console.error("AI Predict Error:", e.response ? e.response.data : e.message);
-        return { error: e.message };
-    }
-};
-
-// ฟังก์ชันเดิม (อาจจะต้องปรับปรุงถ้าต้องการใช้ PredictLatest แบบ Sequence)
-exports.getLatestPrediction = async () => {
-    try {
-        // ต้องแก้ logic นี้ถ้าจะให้ทำงานกับ Model ใหม่
-        // โดยการดึง 5 ภาพล่าสุดจาก DB แทนการดึงภาพเดียว
-        // แต่ในที่นี้คงไว้ก่อน หรือแนะนำให้ใช้ AutoFetch แทน
-        const latestRadar = await Radar.getLatest(); 
-        if (!latestRadar) throw new Error("No radar images found");
-        return await this.getPrediction([latestRadar.filepath]); // ส่งเป็น Array ชั่วคราว
     } catch (error) {
-        console.error("❌ Service Error:", error.message);
-        return { rain_probability: 0, level: "Error", error: true };
+        console.error(`❌ Auto Fetch Failed: ${error.message}`);
+        // ✅ Return Object เพื่อกันไม่ให้ Scheduler Crash
+        return { 
+            success: false, 
+            rain_probability: 0, 
+            level: "Error", 
+            error: error.message 
+        };
     }
 };
 
-// ✅ ขอภาพ Overlay
-exports.getOverlay = async (imageUrl) => {
-    try {
-        const aiUrl = getAIUrl();
-        // Overlay API ฝั่ง Python ยังรับ image_url เดี่ยวอยู่ (ตามโค้ด main.py ก่อนหน้า)
-        const response = await axios.post(`${aiUrl}/overlay`, { image_url: imageUrl });
-        return response.data; // { type: 'overlay', data: 'base64...' }
-    } catch (e) {
-        console.error("AI Overlay Error:", e.message);
-        throw new Error("Failed to generate overlay");
-    }
-};
-
-// ✅ ขอข้อมูล Heatmap
-exports.getHeatmap = async (imageUrl) => {
-    try {
-        const aiUrl = getAIUrl();
-        // Heatmap API ฝั่ง Python ยังรับ image_url เดี่ยวอยู่
-        const response = await axios.post(`${aiUrl}/heatmap`, { image_url: imageUrl });
-        return response.data; // { type: 'heatmap_points', points: [...] }
-    } catch (e) {
-        console.error("AI Heatmap Error:", e.message);
-        throw new Error("Failed to generate heatmap data");
-    }
-};
+exports.fetchRadarImage = exports.getLatestRadarImage;

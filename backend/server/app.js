@@ -40,6 +40,14 @@ app.use("/api/ai", require("./routes/ai.routes"));
 app.use("/api/map", require("./routes/map.routes"));
 app.use("/api/admin", require("./routes/admin.routes"));
 
+app.get('/', (req, res) => {
+    res.json({
+        status: "Online",
+        service: "Rain Forecast API",
+        message: "Server is running smoothly."
+    });
+});
+
 /* ================= Health Check ================= */
 
 app.get("/api/health", (req, res) => {
