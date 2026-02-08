@@ -1,64 +1,55 @@
-const dns = require('dns');
-try {
-    dns.setDefaultResultOrder('ipv4first');
-    console.log("🔒 Force IPv4 First: Enabled");
-} catch (e) {
-    console.log("⚠️ Node version < 17, cannot force IPv4 via code.");
-}
-
-require('dotenv').config(); // โหลด .env
-
-const express = require("express");
-const morgan = require("morgan");
-const cors = require("cors");
-const path = require('path');
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
 const app = express();
-
-/* ================= Middleware ================= */
-
-// Logger
-app.use(morgan("dev"));
-
-// Body parser  ⭐ สำคัญมาก (แก้ req.body undefined)
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CORS
 app.use(cors());
+app.use(express.json());
 
-// Static
-app.use('/storage', express.static(path.join(__dirname, 'storage')));
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-/* ================= Scheduler ================= */
-require('./scheduler');
-
-/* ================= Routes ================= */
-
-app.use("/api/radar", require("./routes/radar.routes"));
-app.use("/api/ai", require("./routes/ai.routes"));
-app.use("/api/map", require("./routes/map.routes"));
-app.use("/api/admin", require("./routes/admin.routes"));
-
+// ✅ Route 1: Health Check
 app.get('/', (req, res) => {
-    res.json({
-        status: "Online",
-        service: "Rain Forecast API",
-        message: "Server is running smoothly."
-    });
+    res.json({ status: "Online", service: "Rain Forecast API" });
 });
 
-/* ================= Health Check ================= */
+// ✅ Route 2: API สำหรับ Flutter (ดึงผลล่าสุด)
+app.get('/api/weather/latest', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('predictions')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-app.get("/api/health", (req, res) => {
-    res.json({ status: "OK", service: "RainForecast Backend MVC" });
+        if (error || !data || data.length === 0) {
+            return res.status(404).json({ message: "No data" });
+        }
+
+        const latest = data[0];
+        res.json({
+            status: "success",
+            timestamp: latest.created_at,
+            data: {
+                rain_probability: latest.rain_probability,
+                rain_level: latest.rain_level,
+                heatmap_image: latest.raw_heatmap_base64,
+                message: getThaiMessage(latest.rain_level)
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
-/* ================= Server ================= */
-
-
+function getThaiMessage(level) {
+    if (level.includes("Very Heavy")) return "ฝนตกหนักมาก อันตราย!";
+    if (level.includes("Heavy")) return "ฝนตกหนัก";
+    if (level.includes("Moderate")) return "ฝนปานกลาง";
+    if (level.includes("Light")) return "มีฝนเล็กน้อย";
+    return "ไม่มีฝน";
+}
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 API running on port: ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
