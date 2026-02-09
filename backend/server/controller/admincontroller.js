@@ -1,35 +1,71 @@
+// ===============================
+// ENV CONFIG (ต้องอยู่บนสุด)
+// ===============================
+require('../config/env');   // ✅ โหลด env กลาง
+
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = 'https://okopzoltzofgefsihcvb.supabase.co';
-// ควรย้าย Key ไปไว้ใน .env แต่ใส่ไว้ตรงนี้ก่อนตามเดิม
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rb3B6b2x0em9mZ2Vmc2loY3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyMjg3ODYsImV4cCI6MjA4NDgwNDc4Nn0.lcFvT2doqDsDlru5mhkrDcG1dzEdRUCpkAFMqq4futw';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// ===============================
+// SUPABASE CLIENT
+// ===============================
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+    console.error("❌ Missing Supabase ENV in admincontroller");
+    console.error("SUPABASE_URL =", process.env.SUPABASE_URL);
+    console.error("SUPABASE_KEY =", process.env.SUPABASE_KEY);
+    throw new Error("Supabase ENV not loaded");
+}
 
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_KEY
+);
+
+// ===============================
+// ONLINE USER TRACKING
+// ===============================
 let onlineUsers = new Map();
 
+// ===============================
+// CONTROLLERS
+// ===============================
+
+/**
+ * Track Online Device
+ */
 exports.trackOnline = (req, res) => {
-    // ✅ แก้ไข: ใช้ (req.body || {}) เพื่อป้องกัน crash ถ้า body เป็น undefined
     const { deviceId } = req.body || {}; 
     
-    if(deviceId){
+    if (deviceId) {
         onlineUsers.set(deviceId, Date.now());
     }
-    // ตอบกลับเสมอแม้ไม่มี deviceId เพื่อไม่ให้ Client ค้าง
-    res.status(200).json({success: true});
+
+    // ตอบกลับเสมอ
+    res.status(200).json({ success: true });
 };
 
+
+/**
+ * Get Online Count
+ */
 exports.getOnlineCount = (req, res) => {
     const now = Date.now();
-    const timeout = 60000;
+    const timeout = 60 * 1000; // 60s
+
     for (let [id, lastSeen] of onlineUsers) {
-        if(now - lastSeen > timeout) onlineUsers.delete(id);
+        if (now - lastSeen > timeout) {
+            onlineUsers.delete(id);
+        }
     }
-    res.json({online_count: onlineUsers.size});
+
+    res.json({ online_count: onlineUsers.size });
 };
 
+
+/**
+ * Admin Login
+ */
 exports.loginAdmin = async (req, res) => {
     try {
-        // ✅ แก้ไข: เพิ่มความปลอดภัยตรงนี้ด้วย
         const { email, password } = req.body || {}; 
 
         if (!email || !password) {
@@ -40,8 +76,8 @@ exports.loginAdmin = async (req, res) => {
         }
 
         const { data, error } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: password,
+            email,
+            password,
         });
 
         if (error) {
@@ -55,13 +91,16 @@ exports.loginAdmin = async (req, res) => {
             success: true,
             message: "Login successful",
             token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
             user: {
                 id: data.user.id,
-                email: data.user.email
+                email: data.user.email,
+                role: data.user.role || "admin"
             }
         });
 
     } catch (error) {
+        console.error("❌ loginAdmin error:", error.message);
         res.status(500).json({ 
             success: false, 
             message: "Internal server error",
