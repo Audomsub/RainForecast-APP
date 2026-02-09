@@ -18,6 +18,25 @@ class DBService {
     return _db!;
   }
 
+  Future<List<Map<String, dynamic>>> getTrafficStats() async {
+  try {
+    final response = await _supabase
+        .from('online_stats')
+        .select('timestamp, user_count')
+        .order('timestamp', ascending: true);
+    
+    return (response as List).map((item) {
+      final time = DateTime.parse(item['timestamp']).toLocal();
+      return {
+        'hour': time.hour.toString().padLeft(2, '0'),
+        'count': item['user_count'] ?? 0
+      };
+    }).toList();
+  } catch (e) {
+    return [];
+  }
+}
+
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'rainforecast_stable.db'); 

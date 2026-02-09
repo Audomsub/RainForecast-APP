@@ -5,18 +5,15 @@ from tqdm import tqdm
 
 # --- CONFIG ---
 RAW_DIR = "raw_radar_images"
-DATASET_DIR = "rain_dataset"  # ✅ ชื่อเดียวกับ train.py
+DATASET_DIR = "rain_dataset"  # เปลี่ยนชื่อให้ตรงกับที่ train.py เรียกใช้
 IMG_SIZE = (800, 800)
 SEQ_LENGTH = 5
 RAIN_THRESHOLD = 0.01
 
 def create_dataset():
     if not os.path.exists(RAW_DIR):
-        try:
-            os.makedirs(RAW_DIR)
-            print(f"⚠️ Created missing folder: {RAW_DIR}")
-        except OSError:
-            pass
+        os.makedirs(RAW_DIR)
+        print(f"Created missing folder: {RAW_DIR}")
         return
 
     if not os.path.exists(DATASET_DIR):
@@ -30,8 +27,10 @@ def create_dataset():
         return
 
     count = 0
-    # Sliding Window
-    for i in range(len(files) - SEQ_LENGTH):
+    # ใช้ tqdm แต่เช็คก่อนว่ารันใน mode ไหนเพื่อไม่ให้ log รก
+    loop_range = range(len(files) - SEQ_LENGTH)
+    
+    for i in loop_range:
         input_files = files[i : i + SEQ_LENGTH]
         target_file = files[i + SEQ_LENGTH]
 
@@ -53,6 +52,7 @@ def create_dataset():
         if target is None: continue
         target = cv2.resize(target, IMG_SIZE).astype(np.float32) / 255.0
 
+        # Rain Filter: เก็บเฉพาะรูปที่มีฝน
         if np.mean(target) > RAIN_THRESHOLD:
             X = np.expand_dims(np.array(imgs), axis=1)
             Y = np.expand_dims(target, axis=0)
@@ -61,7 +61,7 @@ def create_dataset():
             np.savez_compressed(save_path, x=X, y=Y)
             count += 1
 
-    print(f"✅ Dataset Updated: {count} sequences.")
+    print(f"Dataset Updated: {count} sequences created.")
 
 if __name__ == "__main__":
     create_dataset()

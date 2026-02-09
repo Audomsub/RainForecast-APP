@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
+<<<<<<< HEAD
 
 // Import Routes
 const radarRoutes = require('./routes/radar.routes');
@@ -9,11 +10,14 @@ const mapRoutes = require('./routes/map.routes');
 const aiRoutes = require('./routes/ai.routes');
 const adminRoutes = require('./routes/admin.routes');
 require('./scheduler'); // Start Scheduler
+=======
+>>>>>>> ffd6ee810f3cc02508805fb2a7fd6f7678d719e7
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+<<<<<<< HEAD
 // Supabase Client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -23,6 +27,16 @@ app.get('/', (req, res) => {
 });
 
 // ✅ Route สำหรับ Flutter (ดึงผลพยากรณ์ล่าสุด)
+=======
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// ✅ Route 1: Health Check
+app.get('/', (req, res) => {
+    res.json({ status: "Online", service: "Rain Forecast API" });
+});
+
+// ✅ Route 2: API สำหรับ Flutter (ดึงผลล่าสุด)
+>>>>>>> ffd6ee810f3cc02508805fb2a7fd6f7678d719e7
 app.get('/api/weather/latest', async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -32,6 +46,7 @@ app.get('/api/weather/latest', async (req, res) => {
             .limit(1);
 
         if (error || !data || data.length === 0) {
+<<<<<<< HEAD
             return res.status(404).json({ message: "No prediction data found" });
         }
 
@@ -44,14 +59,25 @@ app.get('/api/weather/latest', async (req, res) => {
         else if (latest.rain_level.includes("Moderate")) msg = "🌦️ ฝนปานกลาง";
         else if (latest.rain_level.includes("Light")) msg = "☁️ มีฝนเล็กน้อย";
 
+=======
+            return res.status(404).json({ message: "No data" });
+        }
+
+        const latest = data[0];
+>>>>>>> ffd6ee810f3cc02508805fb2a7fd6f7678d719e7
         res.json({
             status: "success",
             timestamp: latest.created_at,
             data: {
                 rain_probability: latest.rain_probability,
                 rain_level: latest.rain_level,
+<<<<<<< HEAD
                 message: msg,
                 heatmap_image: latest.raw_heatmap_base64
+=======
+                heatmap_image: latest.raw_heatmap_base64,
+                message: getThaiMessage(latest.rain_level)
+>>>>>>> ffd6ee810f3cc02508805fb2a7fd6f7678d719e7
             }
         });
     } catch (e) {
@@ -59,6 +85,7 @@ app.get('/api/weather/latest', async (req, res) => {
     }
 });
 
+<<<<<<< HEAD
 // Register Routes
 app.use('/api/radar', radarRoutes);
 app.use('/api/map', mapRoutes);
@@ -69,3 +96,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });
+=======
+function getThaiMessage(level) {
+    if (level.includes("Very Heavy")) return "ฝนตกหนักมาก อันตราย!";
+    if (level.includes("Heavy")) return "ฝนตกหนัก";
+    if (level.includes("Moderate")) return "ฝนปานกลาง";
+    if (level.includes("Light")) return "มีฝนเล็กน้อย";
+    return "ไม่มีฝน";
+}
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+>>>>>>> ffd6ee810f3cc02508805fb2a7fd6f7678d719e7
