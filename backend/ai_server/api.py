@@ -87,7 +87,6 @@ def train_task():
     global is_training
     is_training = True
     try:
-        # เริ่มเทรน (ถ้าสำเร็จ ให้โหลดโมเดลใหม่ทันที)
         if run_training(): 
             load_weights()
     finally:
