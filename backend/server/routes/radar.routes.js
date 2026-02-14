@@ -1,11 +1,12 @@
 const router = require("express").Router();
-const radarController = require("../model/controller/radar.controller");
+// จุดที่ Error: ตรวจสอบบรรทัดนี้ ต้องเป็น "../controller/radar.controller"
+const radarController = require("../controller/radar.controller");
 
 router.post("/fetch", radarController.fetchRadar);
 router.get("/latest", radarController.getLatest);
 router.get("/history", radarController.getHistory);
 
-// ✅ เพิ่ม Routes สำหรับ Visualization
+// ✅ Routes สำหรับ Visualization
 router.get("/visualization/overlay", radarController.getLatestOverlay);
 router.get("/visualization/heatmap", radarController.getLatestHeatmap);
 
