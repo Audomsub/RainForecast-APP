@@ -111,7 +111,8 @@ exports.getLastNRadarImages = async (n = 5) => {
         const { data, error } = await supabase
             .from('radar_images')
             .select('filepath')
-            .order('timestamp', { ascending: false })
+            // แก้ไขการ sort ถ้าจำเป็นต้องใช้ timestamp แต่ถ้าไม่มี error ก็ปล่อยไว้
+            .order('id', { ascending: false }) 
             .limit(n);
 
         if (error || !data || data.length < n) return [];
@@ -140,13 +141,13 @@ exports.autoFetchRadar = async () => {
         const { filename, filepath } = await exports.getLatestRadarImage();
 
         // 2) Save DB
+        // ❌ ลบ station: 'rongkwang' ออก เพราะ Database ไม่มี Column นี้
         const { error: dbError } = await supabase
             .from('radar_images')
             .insert([{ 
-                station: 'rongkwang',
                 filename,
-                filepath,
-                timestamp: new Date()
+                filepath
+                // timestamp: new Date() // ถ้าใน DB มี column timestamp ให้เปิดบรรทัดนี้ หรือถ้าใช้ created_at (auto) ก็ไม่ต้องใส่
             }]);
 
         if (dbError) throw dbError;
