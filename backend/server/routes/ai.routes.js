@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const aiController = require('../controller/ai.controller');
+const aiController = require('../model/controller/ai.controller');
 
 // ตรวจสอบว่าชื่อฟังก์ชันใน controller ตรงกับที่เรียกใช้
 router.post('/predict', aiController.predict); 

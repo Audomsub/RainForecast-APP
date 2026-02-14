@@ -1,6 +1,6 @@
-const radarService = require("../service/radar.service");
-const aiService = require("../service/ai.service"); // ✅ เรียกใช้ AI Service
-const Radar = require("../model/radar.model");
+const radarService = require("../../service/radar.service");
+const aiService = require("../../service/ai.service"); // ✅ เรียกใช้ AI Service
+const Radar = require("../radar.model");
 
 exports.fetchRadar = async(req,res)=>{
     try{

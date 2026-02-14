@@ -41,6 +41,28 @@ exports.getOnlineCount = (req, res) => {
 };
 
 /**
+ * Get Traffic Stats (ส่วนที่เพิ่มใหม่เพื่อแก้ Error)
+ */
+exports.getTrafficStats = (req, res) => {
+    // โค้ดตัวอย่างการส่งค่ากลับ (Mockup) ป้องกันโปรแกรม Crash
+    // คุณสามารถเขียน Logic จริงๆ เพิ่มเติมตรงนี้ได้
+    const now = Date.now();
+    const timeout = 60 * 1000;
+    
+    // Clean up old users first
+    for (let [id, lastSeen] of onlineUsers) {
+        if (now - lastSeen > timeout) onlineUsers.delete(id);
+    }
+
+    res.status(200).json({ 
+        success: true,
+        message: "Traffic stats retrieved",
+        active_users: onlineUsers.size,
+        total_hits: onlineUsers.size // ตัวอย่างข้อมูล
+    });
+};
+
+/**
  * Admin Login
  */
 exports.loginAdmin = async (req, res) => {

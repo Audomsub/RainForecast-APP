@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const radarController = require("../controller/radar.controller");
+const radarController = require("../model/controller/radar.controller");
 
 router.post("/fetch", radarController.fetchRadar);
 router.get("/latest", radarController.getLatest);
