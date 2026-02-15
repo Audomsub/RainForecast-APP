@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_map:
+  flutter_map: ^6.1.0 # ใช้ flutter_map ในการจัดการ Layer
   flutter_login: ^5.0.0
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.2
@@ -27,22 +27,15 @@ dependencies:
   fl_chart: ^0.70.0
   geolocator: ^14.0.2
   image_picker: ^1.2.1
+  image: ^4.2.0 # ✅ เพิ่มสำหรับ Crop และแยกสีฝน
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^2.0.0
   flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
-
   assets:
     - assets/logo.png
-
-flutter_icons:
-  android: true
-  ios: true
-  image_path: "assets/logo.png"
-  adaptive_icon_background: "#ffffff"
-  adaptive_icon_foreground: "assets/logo.png"
