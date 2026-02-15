@@ -10,114 +10,49 @@ class AdminDashboardPage extends StatefulWidget {
   State<AdminDashboardPage> createState() => _AdminDashboardPageState();
 }
 
-class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTickerProviderStateMixin {
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
   final DBService _dbService = DBService();
-  late TabController _tabController;
   Timer? _timer;
 
-  List<Map<String, dynamic>> _reports = [];
-  List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _stats = [];
-  int _onlineCount = 0; 
-  final String _adminDeviceId = "admin_${DateTime.now().millisecondsSinceEpoch}";
+  int _onlineCount = 0;
+
+  final String _adminDeviceId =
+      "admin_${DateTime.now().millisecondsSinceEpoch}";
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadAllData();
-    
-    // Set Timer to update data every 10 seconds
+    _loadData();
+
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (mounted) {
-        await _dbService.sendHeartbeat(_adminDeviceId); 
-        _loadAllData();
+        await _dbService.sendHeartbeat(_adminDeviceId);
+        _loadData();
       }
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel(); 
-    _tabController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadAllData() async {
-    final reports = await _dbService.getAllReportsForAdmin();
-    final users = await _dbService.getUniqueUsers();
-    
-    // Fetch traffic stats from online history instead of report counts
-    final stats = await _dbService.getTrafficStats(); 
-    final online = await _dbService.getOnlineCount();
-    
-    if (mounted) {
-      setState(() {
-        _reports = reports;
-        _users = users;
-        _stats = stats;
-        _onlineCount = online;
-      });
+  Future<void> _loadData() async {
+    try {
+      final stats = await _dbService.getTrafficStats();
+      final online = await _dbService.getOnlineCount();
+
+      if (mounted) {
+        setState(() {
+          _stats = stats;
+          _onlineCount = online;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading admin stats: $e");
     }
-  }
-
-  Future<void> _deleteReport(int id) async {
-    await _dbService.deleteReport(id);
-    await _loadAllData();
-    if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report deleted')));
-  }
-
-  Future<void> _editReport(Map<String, dynamic> report) async {
-    final categories = await _dbService.getCategories();
-    final descCtrl = TextEditingController(text: report['description']);
-    int selectedCatId = report['category_id'];
-
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) {
-        int tempCatId = selectedCatId;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Edit Report'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<int>(
-                    value: tempCatId,
-                    decoration: const InputDecoration(labelText: 'Weather Condition'),
-                    items: categories.map((cat) {
-                      return DropdownMenuItem<int>(
-                        value: cat['id'] as int,
-                        child: Text(cat['name']),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => tempCatId = val!),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: descCtrl,
-                    decoration: const InputDecoration(labelText: 'Description'),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                ElevatedButton(
-                  onPressed: () async {
-                    await _dbService.updateReport(report['report_id'], tempCatId, descCtrl.text);
-                    Navigator.pop(context);
-                    await _loadAllData();
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
   }
 
   @override
@@ -125,240 +60,245 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Admin Dashboard', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Live Traffic Monitor',
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        centerTitle: false,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                )
+              ],
+            ),
             child: Row(
               children: [
-                const Icon(Icons.circle, color: Colors.green, size: 10), 
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.greenAccent[700],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.6),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      )
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Text(
-                  "Online: $_onlineCount", 
-                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)
+                  "$_onlineCount Online",
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: const Color(0xFF6C63FF),
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: const Color(0xFF6C63FF),
-          tabs: const [
-            Tab(icon: Icon(Icons.list_alt), text: "Reports"),
-            Tab(icon: Icon(Icons.people), text: "Users"),
-            Tab(icon: Icon(Icons.show_chart), text: "Traffic"), 
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            _buildSummaryCard(),
+            const SizedBox(height: 20),
+            _buildHourlyTrafficGraph(),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildReportsList(),
-          _buildUsersList(),
-          _buildHourlyTrafficGraph(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReportsList() {
-    if (_reports.isEmpty) return const Center(child: Text("No reports available"));
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _reports.length,
-      itemBuilder: (context, index) {
-        final report = _reports[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Color(report['color_value']).withOpacity(0.2),
-              child: Icon(IconData(report['icon_code'], fontFamily: 'MaterialIcons'), 
-                        color: Color(report['color_value'])),
-            ),
-            title: Text(report['cat_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("User: ${report['reporter_name']}"),
-                Text(report['description'] ?? "-"),
-                if (report['image_path'] != null)
-                   Text(" Image attached", style: TextStyle(color: Colors.blue[700], fontSize: 12)),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.orange), 
-                  onPressed: () => _editReport(report),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red), 
-                  onPressed: () => _deleteReport(report['report_id']),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildUsersList() {
-    if (_users.isEmpty) return const Center(child: Text("No user data available"));
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _users.length,
-      itemBuilder: (context, index) {
-        final user = _users[index];
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.purple.withOpacity(0.1),
-              child: const Icon(Icons.person, color: Colors.purple),
-            ),
-            title: Text(user['reporter_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text("Last active: ${user['last_active'].substring(0, 16).replaceFirst('T', ' ')}"),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text("${user['report_count']} Reports", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-            ),
-          ),
-        );
-      },
     );
   }
 
   Widget _buildHourlyTrafficGraph() {
-    if (_stats.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (_stats.isEmpty) {
+      return SizedBox(
+        height: 300,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.bar_chart, size: 40, color: Colors.grey),
+              SizedBox(height: 10),
+              Text(
+                "Waiting for traffic data...",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-    List<FlSpot> spots = _stats.map((s) {
-      return FlSpot(double.parse(s['hour']), s['count'].toDouble());
-    }).toList();
+    List<FlSpot> spots = [];
 
-    double maxCount = _stats.map((s) => s['count'] as int).reduce((a, b) => a > b ? a : b).toDouble();
+    try {
+      spots = _stats.map((s) {
+        DateTime time =
+            DateTime.parse(s['timestamp']).toLocal();
+        double xValue =
+            time.hour + (time.minute / 60.0);
+
+        return FlSpot(
+          xValue,
+          (s['user_count'] as num).toDouble(),
+        );
+      }).toList();
+
+      spots.sort((a, b) => a.x.compareTo(b.x));
+    } catch (e) {
+      return Center(child: Text("Data Error: $e"));
+    }
+
+    double maxCount = spots.isEmpty
+        ? 5
+        : spots
+            .map((e) => e.y)
+            .reduce((a, b) => a > b ? a : b);
+
     if (maxCount < 5) maxCount = 5;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          )
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("User Traffic Statistics", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text("Displays user density based on time intervals", style: TextStyle(color: Colors.grey)),
+          const Text(
+            "Traffic Trends",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 30),
-          
           AspectRatio(
             aspectRatio: 1.5,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.withOpacity(0.1), strokeWidth: 1),
-                ),
-                titlesData: FlTitlesData(
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 4, 
-                      getTitlesWidget: (value, meta) {
-                        return SideTitleWidget(
-                          meta: meta,
-                          child: Text('${value.toInt()}:00', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                        );
-                      },
-                    ),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 30,
-                      getTitlesWidget: (value, meta) {
-                        return Text(value.toInt().toString(), style: const TextStyle(fontSize: 10, color: Colors.grey));
-                      },
-                    ),
-                  ),
-                ),
                 borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: 24,
+                minY: 0,
+                maxY: maxCount * 1.2,
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots,
                     isCurved: true,
                     color: const Color(0xFF6C63FF),
-                    barWidth: 4,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-                        radius: 4,
-                        color: Colors.white,
-                        strokeWidth: 2,
-                        strokeColor: const Color(0xFF6C63FF),
-                      ),
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: const Color(0xFF6C63FF).withOpacity(0.1),
-                    ),
+                    barWidth: 3,
+                    dotData: FlDotData(show: false),
                   ),
                 ],
-                minX: 0,
-                maxX: 23,
-                minY: 0,
-                maxY: maxCount + 1,
               ),
             ),
           ),
-          
-          const SizedBox(height: 40),
-          _buildSummaryCard(),
         ],
       ),
     );
   }
 
   Widget _buildSummaryCard() {
-    int currentTotal = _stats.fold(0, (sum, item) => sum + (item['count'] as int));
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _summaryItem("Today's Total", currentTotal.toString(), Icons.history),
-            const VerticalDivider(),
-            _summaryItem("Backend Status", "Online", Icons.cloud_done, color: Colors.green),
-          ],
-        ),
+    int totalHits = _stats.fold(
+      0,
+      (sum, item) =>
+          sum + (item['user_count'] as num).toInt(),
+    );
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6C63FF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _summaryItem(
+            "Total Activity",
+            "$totalHits",
+            Icons.touch_app,
+            Colors.white,
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: Colors.white24,
+          ),
+          _summaryItem(
+            "System Status",
+            "Normal",
+            Icons.cloud_done,
+            Colors.greenAccent,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _summaryItem(String title, String value, IconData icon, {Color color = const Color(0xFF6C63FF)}) {
+  Widget _summaryItem(
+    String title,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(height: 8),
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 5),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
       ],
     );
   }
