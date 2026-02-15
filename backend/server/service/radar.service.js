@@ -1,29 +1,22 @@
 // ===============================
-// ENV CONFIG (ต้องอยู่บนสุดเสมอ)
+// ENV CONFIG
 // ===============================
-require('../config/env');   // โหลด env จากไฟล์กลาง
+require('../config/env');
 
 const axios = require("axios");
 const { createClient } = require('@supabase/supabase-js');
 const https = require("https");
-const fs = require('fs');
+const fs = require('fs-extra'); // ใช้ fs-extra
 const path = require('path');
-const aiService = require('./ai.service'); 
+const Jimp = require('jimp');   // ✅ ใช้ Jimp จัดการรูปภาพ
+const db = require('../db');    // เชื่อมต่อ DB โดยตรง
 
 // ===============================
-// SUPABASE CLIENT
+// SUPABASE CLIENT (Optional keep if needed)
 // ===============================
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
-    console.error("❌ Missing SUPABASE ENV");
-    console.error("SUPABASE_URL =", process.env.SUPABASE_URL);
-    console.error("SUPABASE_KEY =", process.env.SUPABASE_KEY);
-    throw new Error("Supabase ENV not loaded");
-}
-
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_KEY
-);
+const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_KEY 
+    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY) 
+    : null;
 
 // ===============================
 // CONSTANTS
@@ -31,20 +24,40 @@ const supabase = createClient(
 const API_URL = "https://file.royalrain.go.th/opendata/radar_data/cappi/api.php?station=rongkwang";
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-// 📂 Path สำหรับเก็บรูปเพื่อให้ AI นำไปเทรน
-const AI_RAW_DATA_PATH = path.join(__dirname, '../../ai_server/raw_radar_images');
+// 📂 Path สำหรับเก็บรูปที่จะแสดงผล (ในโปรเจกต์ backend)
+const STORAGE_PATH = path.join(__dirname, '../storage/radar_images');
 
 // สร้างโฟลเดอร์ถ้ายังไม่มี
-if (!fs.existsSync(AI_RAW_DATA_PATH)) {
-    fs.mkdirSync(AI_RAW_DATA_PATH, { recursive: true });
-}
+fs.ensureDirSync(STORAGE_PATH);
 
 // ===============================
 // FUNCTIONS
 // ===============================
 
 /**
- * ดึง radar ล่าสุด → save local → upload supabase → return public url
+ * ฟังก์ชันประมวลผลภาพ: ลบพื้นหลังสีดำออก (Make Transparent)
+ */
+async function processRadarImage(buffer) {
+    const image = await Jimp.read(buffer);
+
+    // Scan ทุก pixel
+    image.scan(0, 0, image.bitmap.width, image.bitmap.height, function(x, y, idx) {
+        const red = this.bitmap.data[idx + 0];
+        const green = this.bitmap.data[idx + 1];
+        const blue = this.bitmap.data[idx + 2];
+
+        // ถ้าสีดำ หรือเกือบดำ (Threshold < 30) ให้ set Alpha = 0 (โปร่งใส)
+        // ปรับค่า 30 ได้ถ้ายังเห็นขอบดำๆ
+        if (red < 30 && green < 30 && blue < 30) {
+            this.bitmap.data[idx + 3] = 0; // Alpha channel
+        }
+    });
+
+    return image;
+}
+
+/**
+ * ดึง radar ล่าสุด → ลบพื้นหลัง → save local → save db → return url
  */
 exports.getLatestRadarImage = async () => {
     try {
@@ -62,38 +75,40 @@ exports.getLatestRadarImage = async () => {
         const latest = data[data.length - 1];
         const imageUrl = latest.url.replace("http://", "https://");
 
-        // Download Image
+        // 1. Download Image Buffer
         const imgRes = await axios.get(imageUrl, {
             responseType: "arraybuffer",
             timeout: 60000,
             httpsAgent: agent
         });
 
+        // 2. Process Image (Remove Black Background)
+        console.log("🎨 Processing image transparency...");
+        const processedImage = await processRadarImage(imgRes.data);
+
         const filename = `radar_${Date.now()}.png`;
+        const localFilePath = path.join(STORAGE_PATH, filename);
+        
+        // 3. Save Processed Image to Disk
+        await processedImage.writeAsync(localFilePath);
+        console.log(`💾 Saved processed image: ${filename}`);
 
-        // 1) Save Local (Train AI)
-        const localPath = path.join(AI_RAW_DATA_PATH, filename);
-        fs.writeFileSync(localPath, imgRes.data);
-        console.log(`💾 Saved local image: ${filename}`);
+        // สร้าง URL สำหรับเข้าถึงไฟล์ (Relative path)
+        // เช่น /storage/radar_images/radar_123456.png
+        const publicPath = `/storage/radar_images/${filename}`;
 
-        // 2) Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
-            .from('radar-images')
-            .upload(filename, imgRes.data, { contentType: 'image/png', upsert: true });
-
-        if (uploadError) {
-            throw new Error(`Upload Error: ${uploadError.message}`);
-        }
-
-        // 3) Public URL
-        const { data: publicUrlData } = supabase
-            .storage
-            .from('radar-images')
-            .getPublicUrl(filename);
-
+        // 4. Save to Database (ใช้ SQL โดยตรงตามไฟล์ model)
+        // เราบันทึกทั้ง filename, filepath (url), และ source_url ต้นฉบับ
+        const insertQuery = `
+            INSERT INTO radar_images (filename, filepath, source_url) 
+            VALUES ($1, $2, $3) 
+            RETURNING *
+        `;
+        const { rows } = await db.query(insertQuery, [filename, publicPath, imageUrl]);
+        
         return { 
-            filename, 
-            filepath: publicUrlData.publicUrl 
+            success: true,
+            data: rows[0]
         };
 
     } catch (error) {
@@ -102,92 +117,18 @@ exports.getLatestRadarImage = async () => {
     }
 };
 
-
 /**
- * ดึง radar ล่าสุด N ภาพ สำหรับ sequence prediction
- */
-exports.getLastNRadarImages = async (n = 5) => {
-    try {
-        const { data, error } = await supabase
-            .from('radar_images')
-            .select('filepath')
-            // แก้ไขการ sort ถ้าจำเป็นต้องใช้ timestamp แต่ถ้าไม่มี error ก็ปล่อยไว้
-            .order('id', { ascending: false }) 
-            .limit(n);
-
-        if (error || !data || data.length < n) return [];
-        return data.map(row => row.filepath).reverse();
-    } catch (e) {
-        return [];
-    }
-};
-
-
-/**
- * Auto fetch radar + save + AI predict
+ * Auto fetch radar (ถูกเรียกจาก Scheduler)
  */
 exports.autoFetchRadar = async () => {
-    console.log(`⏰ [${new Date().toLocaleTimeString()}] Auto Fetch Radar...`);
-    
-    let result = { 
-        success: false, 
-        rain_probability: 0, 
-        level: "No Data", 
-        message: "" 
-    };
-
+    console.log(`⏰ [${new Date().toLocaleTimeString()}] Auto Fetch Radar Task...`);
     try {
-        // 1) Fetch + Upload
-        const { filename, filepath } = await exports.getLatestRadarImage();
-
-        // 2) Save DB
-        // ❌ ลบ station: 'rongkwang' ออก เพราะ Database ไม่มี Column นี้
-        const { error: dbError } = await supabase
-            .from('radar_images')
-            .insert([{ 
-                filename,
-                filepath
-                // timestamp: new Date() // ถ้าใน DB มี column timestamp ให้เปิดบรรทัดนี้ หรือถ้าใช้ created_at (auto) ก็ไม่ต้องใส่
-            }]);
-
-        if (dbError) throw dbError;
-
-        // 3) Prediction
-        const sequenceUrls = await exports.getLastNRadarImages(5);
-        
-        if (sequenceUrls.length === 5) {
-            console.log("🤖 Sending 5 frames to AI...");
-            const aiResult = await aiService.getPrediction(sequenceUrls);
-            
-            result.success = true;
-            result.rain_probability = aiResult.rain_probability || 0;
-            result.level = aiResult.level || "Unknown";
-            result.message = "Prediction success";
-            
-            console.log(`🧠 AI Prediction: ${result.level} (${result.rain_probability}%)`);
-
-            // 4) Save prediction
-            const { error: saveError } = await supabase
-                .from('predictions')
-                .insert([{
-                    rain_probability: result.rain_probability,
-                    rain_level: result.level,
-                    raw_heatmap_base64: aiResult.forecast_image || null
-                }]);
-            
-            if (!saveError) console.log("✅ Saved prediction to DB");
-
-        } else {
-            result.message = "Not enough images (Need 5)";
-            console.log("⚠️ " + result.message);
-        }
-
-        return result;
-
+        const result = await exports.getLatestRadarImage();
+        console.log(`✅ Update Radar Success: ${result.data.filename}`);
+        return { success: true };
     } catch (error) {
         console.error(`❌ Auto Fetch Failed: ${error.message}`);
-        result.message = error.message;
-        return result;
+        return { success: false, message: error.message };
     }
 };
 

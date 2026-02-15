@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math'; // ✅ 1. เพิ่ม import นี้
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,20 +29,84 @@ class _MainMapState extends State<MainMap> {
   List<Map<String, dynamic>> _rainReports = [];
 
   late final RealtimeChannel _rainChannel; 
+  
+  // --- ส่วนของ Radar Overlay ---
+  String? _radarImageUrl;
+  Timer? _radarTimer;
+  // พิกัดสถานีเรดาร์ร้องกวาง (Phrae)
+  final LatLng _radarCenter = const LatLng(18.163, 100.354);
+  late LatLngBounds _radarBounds;
 
   @override
   void initState() {
     super.initState();
+    _calculateRadarBounds(); // คำนวณขอบเขตภาพ
+    _fetchLatestRadar();     // ดึงภาพครั้งแรก
+    
+    // ตั้งเวลาดึงภาพใหม่ทุก 6 นาที
+    _radarTimer = Timer.periodic(const Duration(minutes: 6), (timer) {
+      _fetchLatestRadar();
+    });
+
     _fetchReports();
     _handleCurrentLocation();
-    
     _subscribeToRainReports();
   }
 
   @override
   void dispose() {
+    _radarTimer?.cancel();
     Supabase.instance.client.removeChannel(_rainChannel);
     super.dispose();
+  }
+
+  // คำนวณพิกัดขอบเขตภาพ 240km
+  void _calculateRadarBounds() {
+    // รัศมี 240 กม.
+    const double radiusKm = 240.0;
+    // 1 องศา Latitude ประมาณ 111 กม.
+    const double kmPerLatDegree = 111.0;
+    
+    // คำนวณส่วนต่าง Lat/Lng
+    double deltaLat = radiusKm / kmPerLatDegree;
+    
+    // คำนวณส่วนต่าง Longitude (ต้องคูณ cos(lat) เพื่อชดเชยความโค้งโลก)
+    // แปลง lat เป็น radian: lat * pi / 180
+    // ✅ 2. แก้ไขตรงนี้จาก .cos() เป็น cos(...)
+    double kmPerLngDegree = 111.0 * cos(_radarCenter.latitude * 3.14159265 / 180);
+    double deltaLng = radiusKm / kmPerLngDegree;
+
+    _radarBounds = LatLngBounds(
+      LatLng(_radarCenter.latitude - deltaLat, _radarCenter.longitude - deltaLng), // มุมซ้ายล่าง
+      LatLng(_radarCenter.latitude + deltaLat, _radarCenter.longitude + deltaLng), // มุมขวาบน
+    );
+  }
+
+  Future<void> _fetchLatestRadar() async {
+    // เปลี่ยน IP ตรงนี้เป็น IP ของ Server จริง (เช่น 192.168.x.x หรือ Public IP)
+    // ห้ามใช้ localhost ถ้าเทสบนมือถือจริง
+    // สำหรับ Emulator ใช้ 10.0.2.2 ได้
+    const String baseUrl = "http://10.0.2.2:3000"; 
+    
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/api/radar/latest'));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          String path = data['data']['filepath']; // ได้ค่าเช่น /storage/radar_images/radar_xxx.png
+          
+          if (mounted) {
+            setState(() {
+              // Hack: เติม timestamp ต่อท้ายเพื่อบังคับให้ refresh cache
+              _radarImageUrl = '$baseUrl$path?t=${DateTime.now().millisecondsSinceEpoch}';
+            });
+            print("✅ Updated Radar: $_radarImageUrl");
+          }
+        }
+      }
+    } catch (e) {
+      print("❌ Error fetching radar: $e");
+    }
   }
 
   void _subscribeToRainReports() {
@@ -54,7 +119,6 @@ class _MainMapState extends State<MainMap> {
         callback: (payload) {
           print('⚡ Realtime Update: มีจุดฝนตกใหม่!');
           _fetchReports();
-          
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('⚡ มีรายงานฝนตกจุดใหม่!')),
@@ -67,21 +131,16 @@ class _MainMapState extends State<MainMap> {
 
   Future<void> _fetchReports() async {
     List<Map<String, dynamic>> reports = await _dbService.getSupabaseReports();
-    
     if (reports.isEmpty) {
-      print("⚠️ ใช้ข้อมูล Offline Mode");
       reports = await _dbService.getLocalReports();
-    } else {
-      print("☁️ ใช้ข้อมูล Online Mode (${reports.length} จุด)");
     }
-
     if (mounted) {
       setState(() => _rainReports = reports);
     }
   }
 
   void _showReportDetail(Map<String, dynamic> report) {
-    showModalBottomSheet(
+     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -109,7 +168,6 @@ class _MainMapState extends State<MainMap> {
                     ),
                   ),
                 ),
-
               Row(
                 children: [
                   Icon(IconData(report['icon_code'], fontFamily: 'MaterialIcons'), 
@@ -148,7 +206,6 @@ class _MainMapState extends State<MainMap> {
   Future<void> _handleCurrentLocation() async {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
-      
       try {
         Position position = await Geolocator.getCurrentPosition();
         LatLng userLatLng = LatLng(position.latitude, position.longitude);
@@ -195,7 +252,7 @@ class _MainMapState extends State<MainMap> {
           mapController: _mapController,
           options: MapOptions(
             initialCenter: const LatLng(13.7563, 100.5018),
-            initialZoom: 9.2,
+            initialZoom: 6.0, // ปรับ zoom เริ่มต้นเพื่อให้เห็นภาพรวม
           ),
           children: [
             TileLayer(
@@ -203,7 +260,19 @@ class _MainMapState extends State<MainMap> {
               userAgentPackageName: 'com.example.rainforecast_app',
             ),
             
-            // แสดงเฉพาะหมุดรายงานฝนตกที่มีอยู่แล้ว
+            // ✅ แสดง Radar Overlay (เมฆฝน)
+            if (_radarImageUrl != null)
+              OverlayImageLayer(
+                overlayImages: [
+                  OverlayImage(
+                    bounds: _radarBounds,
+                    opacity: 0.75, // ปรับความโปร่งใสของภาพรวม
+                    imageProvider: NetworkImage(_radarImageUrl!),
+                  ),
+                ],
+              ),
+
+            // Markers เดิม
             MarkerLayer(
               markers: _rainReports.map((report) {
                 return Marker(
@@ -262,7 +331,7 @@ class _MainMapState extends State<MainMap> {
         
         Positioned(
           right: 16, 
-          bottom: 120, // ✅ แก้ไข: ขยับขึ้นจาก 40 เป็น 120 เพื่อให้พ้นแถบด้านล่าง
+          bottom: 120, 
           child: MapControlBar(
             onZoomIn: _handleZoomIn,
             onZoomOut: _handleZoomOut,

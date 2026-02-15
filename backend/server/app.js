@@ -17,6 +17,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
+// ✅ เปิดให้เข้าถึงไฟล์รูปภาพผ่าน URL /storage/...
 app.use('/storage', express.static(path.join(__dirname, 'storage')));
 
 /* ================= Scheduler ================= */

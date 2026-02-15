@@ -82,3 +82,5 @@ Thumbs.db
 
 raw_radar_images/
 rain_datasets/
+
+backend/server/storage/radar_images/
