@@ -1,15 +1,16 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http; // ✅ เพิ่มบรรทัดนี้แล้วจะหายแดงทันที!
+import 'package:http/http.dart' as http; 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ 1. Import Supabase
+import 'package:supabase_flutter/supabase_flutter.dart'; 
+
+// ✅ กำหนด URL ของ Backend
 final String backendUrl = 'https://rainforecast-app.onrender.com/api';
+
 class DBService {
   static Database? _db;
-  
-  // ✅ 2. เรียกใช้ Client ของ Supabase
   final _supabase = Supabase.instance.client; 
 
   Future<Database> get database async {
@@ -18,35 +19,18 @@ class DBService {
     return _db!;
   }
 
-  Future<List<Map<String, dynamic>>> getTrafficStats() async {
-  try {
-    final response = await _supabase
-        .from('online_stats')
-        .select('timestamp, user_count')
-        .order('timestamp', ascending: true);
-    
-    return (response as List).map((item) {
-      final time = DateTime.parse(item['timestamp']).toLocal();
-      return {
-        'hour': time.hour.toString().padLeft(2, '0'),
-        'count': item['user_count'] ?? 0
-      };
-    }).toList();
-  } catch (e) {
-    return [];
-  }
-}
+  // --- 1. การจัดการฐานข้อมูลภายใน (Local SQLite) ---
 
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'rainforecast_stable.db'); 
-    print('✅ DATABASE PATH => $path');
+    debugPrint('✅ DATABASE PATH => $path');
 
     return await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // --- สร้างตารางเหมือนเดิม ---
+        // ตารางสำหรับ Admin
         await db.execute('''
           CREATE TABLE admin_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +46,7 @@ class DBService {
           'is_admin': 1,
         });
 
+        // ตารางหมวดหมู่ความรุนแรงของฝน
         await db.execute('''
           CREATE TABLE report_categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,6 +63,7 @@ class DBService {
         await db.insert('report_categories', {'name': 'Very Heavy Rain', 'icon_code': 0xe6e7, 'color_value': 0xFF9C27B0});
         await db.insert('report_categories', {'name': 'Extreme Rain', 'icon_code': 0xeb46, 'color_value': 0xFF2196F3});
 
+        // ตารางการรายงานสภาพอากาศ
         await db.execute('''
           CREATE TABLE rain_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,19 +85,18 @@ class DBService {
     return sha256.convert(utf8.encode(password)).toString();
   }
 
-  // --- CRUD Functions ---
+  // --- 2. การจัดการข้อมูลการรายงาน (Reports) ---
 
   Future<List<Map<String, dynamic>>> getCategories() async {
     final db = await database;
     return await db.query('report_categories');
   }
 
-  // ✅ 3. แก้ไข addReport ให้ส่งทั้ง 2 ทาง
   Future<void> addReport(double lat, double lng, int categoryId, String desc, String reporter, String? imagePath) async {
     final db = await database;
     final timestamp = DateTime.now().toIso8601String();
 
-    // 3.1 บันทึกลงเครื่อง (SQLite)
+    // บันทึกลง Local
     await db.insert('rain_reports', {
       'latitude': lat,
       'longitude': lng,
@@ -122,7 +107,7 @@ class DBService {
       'image_path': imagePath, 
     });
 
-    // 3.2 ส่งขึ้น Supabase (Cloud)
+    // อัปโหลดขึ้น Supabase
     try {
       await _supabase.from('rain_reports').insert({
         'latitude': lat,
@@ -131,37 +116,26 @@ class DBService {
         'timestamp': timestamp,
         'description': desc,
         'reporter_name': reporter,
-        // หมายเหตุ: image_path ที่เป็น path ในเครื่องจะส่งไปไม่ได้
-        // ถ้าจะทำรูปออนไลน์ต้องอัพโหลดผ่าน Supabase Storage ก่อน
       });
-      print("☁️ Sent to Supabase successfully");
+      debugPrint("☁️ Sent to Supabase successfully");
     } catch (e) {
-      print("❌ Supabase upload failed: $e");
-      // ถ้าเน็ตหลุด ก็ไม่เป็นไร เพราะเซฟลง SQLite แล้ว
+      debugPrint("❌ Supabase upload failed: $e");
     }
   }
 
-  // ✅ 4. เพิ่มฟังก์ชันดึงข้อมูลจาก Supabase
   Future<List<Map<String, dynamic>>> getSupabaseReports() async {
     try {
-      // ดึงข้อมูลพร้อม Join ตาราง Categories
       final response = await _supabase
           .from('rain_reports')
           .select('*, report_categories(name, icon_code, color_value)')
           .gt('timestamp', DateTime.now().subtract(const Duration(hours: 24)).toIso8601String())
           .order('timestamp', ascending: false);
 
-      // ตรวจสอบว่า response เป็น List หรือไม่
       final List<dynamic> data = response as List<dynamic>;
       
-      // ✅ จุดที่แก้: ใช้ Map<String, dynamic>.from() เพื่อแปลง Type ของข้อมูลให้ถูกต้อง
       return data.map<Map<String, dynamic>>((item) {
-        // แปลง item แต่ละตัวให้เป็น Map<String, dynamic> อย่างปลอดภัย
         final safeItem = Map<String, dynamic>.from(item as Map);
-        
-        // จัดการกับข้อมูลที่ Join มา (report_categories)
         final cat = safeItem['report_categories'];
-        
         return {
           ...safeItem,
           'cat_name': cat != null ? cat['name'] : 'Unknown',
@@ -171,12 +145,11 @@ class DBService {
       }).toList();
 
     } catch (e) {
-      print("⚠️ Fetch Supabase Error: $e");
-      return []; // คืนค่าว่างถ้าดึงไม่ได้
+      debugPrint("⚠️ Fetch Supabase Error: $e");
+      return [];
     }
   }
 
-  // ฟังก์ชันดึงจาก SQLite (Offline)
   Future<List<Map<String, dynamic>>> getLocalReports() async {
     final db = await database;
     final timeLimit = DateTime.now().subtract(const Duration(hours: 24)).toIso8601String();
@@ -190,8 +163,18 @@ class DBService {
     ''', [timeLimit]);
   }
 
-  // --- Admin Functions ---
-  // (ส่วน Admin ใช้ของเดิม หรือจะเปลี่ยนไปดึงจาก Supabase ก็ได้ในอนาคต)
+  // --- 3. ฟังก์ชันสำหรับ Admin (Admin Functions) ---
+
+  Future<bool> loginAdmin(String email, String password) async {
+    final db = await database;
+    final result = await db.query(
+      'admin_users',
+      where: 'email = ? AND password_hash = ?',
+      whereArgs: [email, hashPassword(password)],
+    );
+    return result.isNotEmpty;
+  }
+
   Future<List<Map<String, dynamic>>> getAllReportsForAdmin() async {
     final db = await database;
     return await db.rawQuery('''
@@ -235,26 +218,38 @@ class DBService {
     return await db.delete('rain_reports', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<bool> loginAdmin(String email, String password) async {
-    final db = await database;
-    final result = await db.query(
-      'admin_users',
-      where: 'email = ? AND password_hash = ?',
-      whereArgs: [email, hashPassword(password)],
-    );
-    return result.isNotEmpty;
+  // --- 4. สถิติและระบบ Online (Traffic Stats) ---
+
+  Future<List<Map<String, dynamic>>> getTrafficStats() async {
+    try {
+      final response = await _supabase
+          .from('online_stats')
+          .select('timestamp, user_count')
+          .order('timestamp', ascending: true);
+      
+      return (response as List).map((item) {
+        final time = DateTime.parse(item['timestamp']).toLocal();
+        return {
+          'timestamp': item['timestamp'],
+          'hour': time.hour.toString().padLeft(2, '0'),
+          'user_count': item['user_count'] ?? 0
+        };
+      }).toList();
+    } catch (e) {
+      return [];
+    }
   }
 
   Future<void> sendHeartbeat(String deviceId) async {
     try {
-      final url = Uri.parse('$backendUrl/admin/track-online'); //
+      final url = Uri.parse('$backendUrl/admin/track-online'); 
       await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'deviceId': deviceId}),
       );
     } catch (error) {
-      print(" Heartbeat Error: $error"); 
+      debugPrint("💓 Heartbeat Error: $error"); 
     }
   }
 
@@ -266,11 +261,33 @@ class DBService {
         return jsonDecode(response.body)['online_count']; 
       }
     } catch (error) {
-      print(" Online Count Error: $error");
+      debugPrint("👥 Online Count Error: $error");
     }
     return 0;
   }
 
-  
-}
+  // --- 5. การจัดการประวัติ Radar (Radar History) ---
 
+  // ✅ ดึงประวัติ Radar ผ่าน API เส้น /api/radar/history
+  Future<List<Map<String, dynamic>>> getRadarHistory() async {
+    try {
+      final url = Uri.parse('$backendUrl/radar/history');
+      debugPrint("📡 Fetching Radar History from: $url");
+      
+      final response = await http.get(url);
+      
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        if (json['success'] == true) {
+          // คืนค่ารายการประวัติรูปภาพจาก Backend
+          return List<Map<String, dynamic>>.from(json['data']);
+        }
+      } else {
+        debugPrint("❌ API Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("📡 Radar History Connection Error: $e");
+    }
+    return [];
+  }
+}

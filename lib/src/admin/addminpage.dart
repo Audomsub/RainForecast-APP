@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:rainforecast_app/src/service/db_service.dart';
+import 'package:intl/intl.dart'; // ✅ สำหรับจัดการรูปแบบวันที่และเวลา
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -15,16 +16,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   Timer? _timer;
 
   List<Map<String, dynamic>> _stats = [];
+  List<Map<String, dynamic>> _radarLogs = []; // ✅ เก็บข้อมูลประวัติจาก API
   int _onlineCount = 0;
 
-  final String _adminDeviceId =
-      "admin_${DateTime.now().millisecondsSinceEpoch}";
+  final String _adminDeviceId = "admin_${DateTime.now().millisecondsSinceEpoch}";
 
   @override
   void initState() {
     super.initState();
     _loadData();
 
+    // Refresh ข้อมูลทุก 10 วินาที เพื่อให้เห็นสถานะ Live
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (mounted) {
         await _dbService.sendHeartbeat(_adminDeviceId);
@@ -41,13 +43,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _loadData() async {
     try {
+      // ✅ ดึงข้อมูลครบทั้ง 3 ส่วน: สถิติ, จำนวนคนออนไลน์, และประวัติ Radar
       final stats = await _dbService.getTrafficStats();
       final online = await _dbService.getOnlineCount();
+      final radarLogs = await _dbService.getRadarHistory(); 
 
       if (mounted) {
         setState(() {
           _stats = stats;
           _onlineCount = online;
+          _radarLogs = radarLogs; 
         });
       }
     } catch (e) {
@@ -73,8 +78,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -122,63 +126,121 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            _buildSummaryCard(),
+            _buildSummaryCard(), // แสดงยอดรวมกิจกรรม
             const SizedBox(height: 20),
-            _buildHourlyTrafficGraph(),
+            _buildHourlyTrafficGraph(), // แสดงกราฟแนวโน้ม
+            const SizedBox(height: 20),
+            _buildRadarHistorySection(), // ✅ แสดงประวัติ Radar จาก API
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
+  // --- Widget ส่วนแสดงกราฟ ---
   Widget _buildHourlyTrafficGraph() {
     if (_stats.isEmpty) {
-      return SizedBox(
-        height: 300,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.bar_chart, size: 40, color: Colors.grey),
-              SizedBox(height: 10),
-              Text(
-                "Waiting for traffic data...",
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
+      return Container(
+        height: 200,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: const Center(child: Text("Waiting for traffic data...", style: TextStyle(color: Colors.grey))),
       );
     }
 
     List<FlSpot> spots = [];
-
     try {
       spots = _stats.map((s) {
-        DateTime time =
-            DateTime.parse(s['timestamp']).toLocal();
-        double xValue =
-            time.hour + (time.minute / 60.0);
-
-        return FlSpot(
-          xValue,
-          (s['user_count'] as num).toDouble(),
-        );
+        // อ้างอิงชื่อ field 'timestamp' และ 'user_count' ตามใน DBService.getTrafficStats
+        DateTime time = DateTime.parse(s['timestamp']).toLocal();
+        double xValue = time.hour + (time.minute / 60.0);
+        return FlSpot(xValue, (s['user_count'] as num).toDouble());
       }).toList();
-
       spots.sort((a, b) => a.x.compareTo(b.x));
     } catch (e) {
       return Center(child: Text("Data Error: $e"));
     }
 
-    double maxCount = spots.isEmpty
-        ? 5
-        : spots
-            .map((e) => e.y)
-            .reduce((a, b) => a > b ? a : b);
-
+    double maxCount = spots.isEmpty ? 5 : spots.map((e) => e.y).reduce((a, b) => a > b ? a : b);
     if (maxCount < 5) maxCount = 5;
 
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Traffic Trends", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 30),
+          AspectRatio(
+            aspectRatio: 1.5,
+            child: LineChart(
+              LineChartData(
+                borderData: FlBorderData(show: false),
+                minX: 0, maxX: 24, minY: 0, maxY: maxCount * 1.2,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: const Color(0xFF6C63FF),
+                    barWidth: 3,
+                    dotData: const FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Widget ส่วนแสดงบัตรสรุป ---
+  Widget _buildSummaryCard() {
+    int totalHits = _stats.fold(0, (sum, item) => sum + (item['user_count'] as num).toInt());
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6C63FF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _summaryItem("Total Activity", "$totalHits", Icons.touch_app, Colors.white),
+          Container(width: 1, height: 40, color: Colors.white24),
+          _summaryItem("System Status", "Normal", Icons.cloud_done, Colors.greenAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryItem(String title, String value, IconData icon, Color iconColor) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 5),
+            Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+      ],
+    );
+  }
+
+  // ✅ Widget ส่วนแสดงประวัติ Radar ที่เชื่อมต่อกับ API /api/radar/history
+  Widget _buildRadarHistorySection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
@@ -196,110 +258,138 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Traffic Trends",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 30),
-          AspectRatio(
-            aspectRatio: 1.5,
-            child: LineChart(
-              LineChartData(
-                borderData: FlBorderData(show: false),
-                minX: 0,
-                maxX: 24,
-                minY: 0,
-                maxY: maxCount * 1.2,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: const Color(0xFF6C63FF),
-                    barWidth: 3,
-                    dotData: FlDotData(show: false),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "📡 Radar Logs History",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "${_radarLogs.length} Records",
+                  style: const TextStyle(
+                    color: Colors.blueAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-            ),
+                ),
+              )
+            ],
           ),
+          const SizedBox(height: 20),
+          
+          if (_radarLogs.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    Icon(Icons.history_toggle_off, size: 40, color: Colors.grey),
+                    SizedBox(height: 10),
+                    Text("No radar data available", style: TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(), // ใช้ scroll ของหน้า Dashboard หลัก
+              itemCount: _radarLogs.length > 15 ? 15 : _radarLogs.length, // แสดง 15 รายการล่าสุด
+              separatorBuilder: (context, index) => const Divider(height: 20, color: Colors.black12),
+              itemBuilder: (context, index) {
+                final log = _radarLogs[index];
+                final filename = log['filename'] ?? 'Unknown File';
+                final timestampStr = log['created_at'] ?? ''; 
+                
+                String timeDisplay = "Unknown Time";
+                
+                // 1. ลองดึงเวลาจากชื่อไฟล์ (รูปแบบ radar_177xxxx.png)
+                if (filename.toString().contains('_')) {
+                    try {
+                      final parts = filename.toString().split('_');
+                      if(parts.length > 1) {
+                         final tsStr = parts[1].split('.')[0];
+                         final ts = int.tryParse(tsStr);
+                         if (ts != null) {
+                           final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+                           timeDisplay = DateFormat('HH:mm:ss (dd MMM)').format(dt);
+                         }
+                      }
+                    } catch (_) {}
+                }
+                
+                // 2. ถ้าชื่อไฟล์ไม่มีเลข timestamp ให้ใช้ field created_at จากฐานข้อมูล
+                if (timeDisplay == "Unknown Time" && timestampStr.isNotEmpty) {
+                    try {
+                        final dt = DateTime.parse(timestampStr).toLocal();
+                        timeDisplay = DateFormat('HH:mm:ss (dd MMM)').format(dt);
+                    } catch(_) {}
+                }
+
+                return Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.radar, color: Colors.orange, size: 20),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            filename,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Imported: $timeDisplay",
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        "Success",
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSummaryCard() {
-    int totalHits = _stats.fold(
-      0,
-      (sum, item) =>
-          sum + (item['user_count'] as num).toInt(),
-    );
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF6C63FF),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _summaryItem(
-            "Total Activity",
-            "$totalHits",
-            Icons.touch_app,
-            Colors.white,
-          ),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.white24,
-          ),
-          _summaryItem(
-            "System Status",
-            "Normal",
-            Icons.cloud_done,
-            Colors.greenAccent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryItem(
-    String title,
-    String value,
-    IconData icon,
-    Color iconColor,
-  ) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: iconColor, size: 20),
-            const SizedBox(width: 5),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.white70,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 5),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      ],
     );
   }
 }

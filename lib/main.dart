@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // เพิ่ม
+import 'package:supabase_flutter/supabase_flutter.dart';
 // Imports
 import 'package:rainforecast_app/src/appbar/dropdown-menu.dart';
 import 'package:rainforecast_app/src/appbar/menuAlert.dart';
@@ -10,7 +10,7 @@ import 'package:rainforecast_app/src/legend/legendBar.dart';
 import 'package:rainforecast_app/src/legend/legendPopuo.dart';
 import 'package:rainforecast_app/src/popup/alertPopup.dart';
 import 'package:rainforecast_app/src/popup/weatherPopup.dart';
-// import 'package:rainforecast_app/src/login/login.dart'; // ❌ ไม่ได้ใช้แล้ว comment ออกได้
+// import 'package:rainforecast_app/src/login/login.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,14 +33,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // 🎨 Theme Minimalist
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
         primaryColor: const Color(0xFF6C63FF),
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
         fontFamily: 'Roboto',
-        // ตั้งค่า Input ทั่วไป
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
@@ -81,8 +79,6 @@ class _HomepageState extends State<Homepage> {
     debugPrint("Search keyword: $keyword");
   }
 
-  // ❌ ลบฟังก์ชัน _openAdminLogin ออกแล้ว เพราะไม่มีปุ่มให้กด
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -94,7 +90,7 @@ class _HomepageState extends State<Homepage> {
             child: MainMap(searchText: _searchText),
           ),
 
-          // --- 2. Search Bar (แบบโปร่งใส ไม่มีกรอบหลัง) ---
+          // --- 2. Search Bar ---
           Positioned(
             top: 60,
             left: 20,
@@ -102,7 +98,7 @@ class _HomepageState extends State<Homepage> {
             child: Container(
               height: 55,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95), // พื้นหลังปุ่มค้นหาอยู่ที่นี่
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
@@ -116,7 +112,6 @@ class _HomepageState extends State<Homepage> {
                 controller: _searchController,
                 style: const TextStyle(color: Colors.black87),
                 decoration: InputDecoration(
-                  // ✅ ปิด filled เพื่อไม่ให้มีกล่องสี่เหลี่ยมซ้อน
                   filled: false, 
                   hintText: 'Search Location...',
                   hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -167,8 +162,6 @@ class _HomepageState extends State<Homepage> {
             ),
           ),
 
-          // ❌ ลบ Positioned ของปุ่ม Admin ออกไปแล้วตรงนี้
-
           // --- 4. Left Buttons ---
           Positioned(
             top: 150,
@@ -215,6 +208,10 @@ class _HomepageState extends State<Homepage> {
 
           if (_showWeatherPopup)
             WeatherPopup(
+              // ✅ ใส่ค่า Default สำหรับการเปิดจากเมนูปกติ (ไม่ใช่จากแผนที่)
+              title: "Weather Forecast",
+              message: "General weather information",
+              color: const Color(0xFF6C63FF),
               onClose: () => setState(() => _showWeatherPopup = false),
             ),
 

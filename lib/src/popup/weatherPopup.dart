@@ -2,9 +2,18 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class WeatherPopup extends StatefulWidget {
+  final String title;
+  final String message;
+  final Color color;
   final VoidCallback onClose;
 
-  const WeatherPopup({super.key, required this.onClose});
+  const WeatherPopup({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.color,
+    required this.onClose,
+  });
 
   @override
   State<WeatherPopup> createState() => _WeatherPopupState();
@@ -40,92 +49,71 @@ class _WeatherPopupState extends State<WeatherPopup> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ---------- Glass Card ----------
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Container(
                 width: 320,
-                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 22),
+                padding: const EdgeInsets.symmetric(
+                    vertical: 28, horizontal: 22),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
                       Colors.black.withOpacity(0.55),
                       Colors.black.withOpacity(0.35),
                     ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.15)),
+                  border:
+                      Border.all(color: Colors.white.withOpacity(0.15)),
                 ),
                 child: Column(
                   children: [
-                    // ---------- Weather Icon ----------
-                    const Icon(
+                    Icon(
                       Icons.cloud_outlined,
                       size: 90,
-                      color: Colors.white,
+                      color: widget.color,
                     ),
 
-                    Transform.translate(
-                      offset: const Offset(0, -18),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.water_drop,
-                              size: 22, color: Colors.white70),
-                          Icon(Icons.water_drop,
-                              size: 30, color: Colors.white),
-                          Icon(Icons.water_drop,
-                              size: 22, color: Colors.white70),
-                        ],
+                    const SizedBox(height: 10),
+
+                    // 🔥 ใช้ title จากภายนอก
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 10),
 
-                    // ---------- Title ----------
-                    const Text(
-                      "Heavy Rain",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
+                    // 🔥 ใช้ message จากภายนอก
+                    Text(
+                      widget.message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
                       ),
                     ),
 
                     const SizedBox(height: 18),
 
-                    // ---------- Dropdown ----------
                     _dateDropdown(),
 
                     const SizedBox(height: 22),
 
-                    // ---------- Stats ----------
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _WeatherStat(
-                            icon: Icons.thunderstorm, label: "70%"),
-                        _WeatherStat(icon: Icons.wb_sunny, label: "30%"),
-                      ],
-                    ),
-
-                    const SizedBox(height: 22),
-
-                    // ---------- Level Bar ----------
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
                         value: 0.7,
                         minHeight: 10,
                         backgroundColor: Colors.white12,
-                        valueColor: const AlwaysStoppedAnimation(
-                          Color(0xFFFF6F61),
-                        ),
+                        valueColor:
+                            AlwaysStoppedAnimation(widget.color),
                       ),
                     ),
                   ],
@@ -136,7 +124,6 @@ class _WeatherPopupState extends State<WeatherPopup> {
 
           const SizedBox(height: 22),
 
-          // ---------- Close Button ----------
           GestureDetector(
             onTap: widget.onClose,
             child: Container(
@@ -155,7 +142,6 @@ class _WeatherPopupState extends State<WeatherPopup> {
     );
   }
 
-  // ---------- Dropdown Widget ----------
   Widget _dateDropdown() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -176,28 +162,15 @@ class _WeatherPopupState extends State<WeatherPopup> {
               value: option.value,
               child: Row(
                 children: [
-                  Icon(option.icon, color: Colors.white70, size: 20),
+                  Icon(option.icon,
+                      color: Colors.white70, size: 20),
                   const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        option.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        option.subtitle,
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    option.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -214,33 +187,6 @@ class _WeatherPopupState extends State<WeatherPopup> {
   }
 }
 
-// ---------- Weather Stat ----------
-class _WeatherStat extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _WeatherStat({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.white70, size: 22),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------- Date Option Model ----------
 class _DateOption {
   final String value;
   final String title;
