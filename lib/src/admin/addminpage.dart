@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:rainforecast_app/src/service/db_service.dart';
-import 'package:intl/intl.dart'; // ✅ สำหรับจัดการรูปแบบวันที่และเวลา
+import 'package:intl/intl.dart';
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -16,17 +16,22 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   Timer? _timer;
 
   List<Map<String, dynamic>> _stats = [];
-  List<Map<String, dynamic>> _radarLogs = []; // ✅ เก็บข้อมูลประวัติจาก API
+  List<Map<String, dynamic>> _radarLogs = [];
   int _onlineCount = 0;
 
   final String _adminDeviceId = "admin_${DateTime.now().millisecondsSinceEpoch}";
+
+  // ✅ ตั้งค่า Base URL (เปลี่ยน IP ตามเครื่อง Server ของคุณ)
+  // - Android Emulator: "http://10.0.2.2:3000"
+  // - iOS Simulator: "http://localhost:3000"
+  // - เครื่องจริง (Wi-Fi เดียวกัน): "http://192.168.1.xxx:3000"
+  final String _baseUrl = "http://10.0.2.2:3000";
 
   @override
   void initState() {
     super.initState();
     _loadData();
 
-    // Refresh ข้อมูลทุก 10 วินาที เพื่อให้เห็นสถานะ Live
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (mounted) {
         await _dbService.sendHeartbeat(_adminDeviceId);
@@ -43,21 +48,111 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _loadData() async {
     try {
-      // ✅ ดึงข้อมูลครบทั้ง 3 ส่วน: สถิติ, จำนวนคนออนไลน์, และประวัติ Radar
       final stats = await _dbService.getTrafficStats();
       final online = await _dbService.getOnlineCount();
-      final radarLogs = await _dbService.getRadarHistory(); 
+      final radarLogs = await _dbService.getRadarHistory();
 
       if (mounted) {
         setState(() {
           _stats = stats;
           _onlineCount = online;
-          _radarLogs = radarLogs; 
+          _radarLogs = radarLogs;
         });
       }
     } catch (e) {
       debugPrint("Error loading admin stats: $e");
     }
+  }
+
+  // ✅ ฟังก์ชันแสดง Dialog รูปภาพจาก URL
+  void _showRadarImageDialog(String filename, String? filepath) {
+    if (filepath == null || filepath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Image path not found")),
+      );
+      return;
+    }
+
+    // สร้าง URL สมบูรณ์
+    final imageUrl = "$_baseUrl$filepath";
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        filename,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    )
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Image Area (โหลดจาก URL)
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
+                ),
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 200,
+                      alignment: Alignment.center,
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 200,
+                      color: Colors.grey[200],
+                      alignment: Alignment.center,
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                          SizedBox(height: 8),
+                          Text("Failed to load image"),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -126,11 +221,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         child: Column(
           children: [
             const SizedBox(height: 20),
-            _buildSummaryCard(), // แสดงยอดรวมกิจกรรม
+            _buildSummaryCard(),
             const SizedBox(height: 20),
-            _buildHourlyTrafficGraph(), // แสดงกราฟแนวโน้ม
+            _buildHourlyTrafficGraph(),
             const SizedBox(height: 20),
-            _buildRadarHistorySection(), // ✅ แสดงประวัติ Radar จาก API
+            _buildRadarHistorySection(),
             const SizedBox(height: 40),
           ],
         ),
@@ -138,21 +233,22 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  // --- Widget ส่วนแสดงกราฟ ---
   Widget _buildHourlyTrafficGraph() {
     if (_stats.isEmpty) {
       return Container(
         height: 200,
         margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: const Center(child: Text("Waiting for traffic data...", style: TextStyle(color: Colors.grey))),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: const Center(
+            child: Text("Waiting for traffic data...",
+                style: TextStyle(color: Colors.grey))),
       );
     }
 
     List<FlSpot> spots = [];
     try {
       spots = _stats.map((s) {
-        // อ้างอิงชื่อ field 'timestamp' และ 'user_count' ตามใน DBService.getTrafficStats
         DateTime time = DateTime.parse(s['timestamp']).toLocal();
         double xValue = time.hour + (time.minute / 60.0);
         return FlSpot(xValue, (s['user_count'] as num).toDouble());
@@ -162,7 +258,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       return Center(child: Text("Data Error: $e"));
     }
 
-    double maxCount = spots.isEmpty ? 5 : spots.map((e) => e.y).reduce((a, b) => a > b ? a : b);
+    double maxCount = spots.isEmpty
+        ? 5
+        : spots.map((e) => e.y).reduce((a, b) => a > b ? a : b);
     if (maxCount < 5) maxCount = 5;
 
     return Container(
@@ -171,19 +269,28 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 5))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Traffic Trends", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text("Traffic Trends",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 30),
           AspectRatio(
             aspectRatio: 1.5,
             child: LineChart(
               LineChartData(
                 borderData: FlBorderData(show: false),
-                minX: 0, maxX: 24, minY: 0, maxY: maxCount * 1.2,
+                minX: 0,
+                maxX: 24,
+                minY: 0,
+                maxY: maxCount * 1.2,
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots,
@@ -201,9 +308,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  // --- Widget ส่วนแสดงบัตรสรุป ---
   Widget _buildSummaryCard() {
-    int totalHits = _stats.fold(0, (sum, item) => sum + (item['user_count'] as num).toInt());
+    int totalHits =
+        _stats.fold(0, (sum, item) => sum + (item['user_count'] as num).toInt());
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -215,31 +322,36 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _summaryItem("Total Activity", "$totalHits", Icons.touch_app, Colors.white),
+          _summaryItem(
+              "Total Activity", "$totalHits", Icons.touch_app, Colors.white),
           Container(width: 1, height: 40, color: Colors.white24),
-          _summaryItem("System Status", "Normal", Icons.cloud_done, Colors.greenAccent),
+          _summaryItem("System Status", "Normal", Icons.cloud_done,
+              Colors.greenAccent),
         ],
       ),
     );
   }
 
-  Widget _summaryItem(String title, String value, IconData icon, Color iconColor) {
+  Widget _summaryItem(
+      String title, String value, IconData icon, Color iconColor) {
     return Column(
       children: [
         Row(
           children: [
             Icon(icon, color: iconColor, size: 20),
             const SizedBox(width: 5),
-            Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            Text(title,
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
         ),
         const SizedBox(height: 5),
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
       ],
     );
   }
 
-  // ✅ Widget ส่วนแสดงประวัติ Radar ที่เชื่อมต่อกับ API /api/radar/history
   Widget _buildRadarHistorySection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -262,7 +374,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                "📡 Radar Logs History",
+                "Radar Logs History",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -287,16 +399,17 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             ],
           ),
           const SizedBox(height: 20),
-          
           if (_radarLogs.isEmpty)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    Icon(Icons.history_toggle_off, size: 40, color: Colors.grey),
+                    Icon(Icons.history_toggle_off,
+                        size: 40, color: Colors.grey),
                     SizedBox(height: 10),
-                    Text("No radar data available", style: TextStyle(color: Colors.grey)),
+                    Text("No radar data available",
+                        style: TextStyle(color: Colors.grey)),
                   ],
                 ),
               ),
@@ -304,87 +417,129 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           else
             ListView.separated(
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(), // ใช้ scroll ของหน้า Dashboard หลัก
-              itemCount: _radarLogs.length > 15 ? 15 : _radarLogs.length, // แสดง 15 รายการล่าสุด
-              separatorBuilder: (context, index) => const Divider(height: 20, color: Colors.black12),
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _radarLogs.length > 15 ? 15 : _radarLogs.length,
+              separatorBuilder: (context, index) =>
+                  const Divider(height: 20, color: Colors.black12),
               itemBuilder: (context, index) {
                 final log = _radarLogs[index];
                 final filename = log['filename'] ?? 'Unknown File';
-                final timestampStr = log['created_at'] ?? ''; 
-                
+                final filepath = log['filepath'];
+                final timestampStr = log['created_at'] ?? '';
+
+                // สร้าง URL สำหรับ Thumbnail และ Dialog
+                final fullImageUrl = (filepath != null && filepath.isNotEmpty) 
+                    ? "$_baseUrl$filepath" 
+                    : "";
+
                 String timeDisplay = "Unknown Time";
-                
-                // 1. ลองดึงเวลาจากชื่อไฟล์ (รูปแบบ radar_177xxxx.png)
+
+                // Logic แปลงเวลา
                 if (filename.toString().contains('_')) {
-                    try {
-                      final parts = filename.toString().split('_');
-                      if(parts.length > 1) {
-                         final tsStr = parts[1].split('.')[0];
-                         final ts = int.tryParse(tsStr);
-                         if (ts != null) {
-                           final dt = DateTime.fromMillisecondsSinceEpoch(ts);
-                           timeDisplay = DateFormat('HH:mm:ss (dd MMM)').format(dt);
-                         }
-                      }
-                    } catch (_) {}
-                }
-                
-                // 2. ถ้าชื่อไฟล์ไม่มีเลข timestamp ให้ใช้ field created_at จากฐานข้อมูล
-                if (timeDisplay == "Unknown Time" && timestampStr.isNotEmpty) {
-                    try {
-                        final dt = DateTime.parse(timestampStr).toLocal();
+                  try {
+                    final parts = filename.toString().split('_');
+                    if (parts.length > 1) {
+                      final tsStr = parts[1].split('.')[0];
+                      final ts = int.tryParse(tsStr);
+                      if (ts != null) {
+                        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
                         timeDisplay = DateFormat('HH:mm:ss (dd MMM)').format(dt);
-                    } catch(_) {}
+                      }
+                    }
+                  } catch (_) {}
+                }
+                if (timeDisplay == "Unknown Time" && timestampStr.isNotEmpty) {
+                  try {
+                    final dt = DateTime.parse(timestampStr).toLocal();
+                    timeDisplay = DateFormat('HH:mm:ss (dd MMM)').format(dt);
+                  } catch (_) {}
                 }
 
-                return Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.radar, color: Colors.orange, size: 20),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            filename,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                return InkWell(
+                  onTap: () {
+                    // เปิด Dialog ดูรูปใหญ่
+                    _showRadarImageDialog(filename, filepath);
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 4.0, horizontal: 8.0),
+                    child: Row(
+                      children: [
+                        // ✅ ปรับเปลี่ยน: แสดง Thumbnail รูปภาพแทน Icon
+                        Container(
+                          width: 45,
+                          height: 45,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "Imported: $timeDisplay",
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: (fullImageUrl.isNotEmpty)
+                                ? Image.network(
+                                    fullImageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(Icons.radar, 
+                                          color: Colors.orange, size: 24);
+                                    },
+                                  )
+                                : const Icon(Icons.radar, 
+                                    color: Colors.orange, size: 24),
                           ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        "Success",
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                filename,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.black87,
+                                  decoration: TextDecoration.underline,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Imported: $timeDisplay",
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.visibility,
+                                  size: 12, color: Colors.green),
+                              SizedBox(width: 4),
+                              Text(
+                                "View",
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 );
               },
             ),

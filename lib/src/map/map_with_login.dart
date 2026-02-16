@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../login/login.dart';
-import 'mainmap.dart';
+import 'package:rainforecast_app/src/map/mainmap.dart';
 
 class MapWithLogin extends StatelessWidget {
   const MapWithLogin({super.key});

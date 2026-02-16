@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -18,83 +19,126 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
   final TextEditingController _controller = TextEditingController();
   List<dynamic> _results = [];
   bool _loading = false;
+  Timer? _debounce;
 
-  // ฟังก์ชันตรวจสอบว่าเป็นพิกัด Lat, Long หรือไม่
+  // ==============================
+  // ตรวจสอบ Lat,Lng
+  // ==============================
   bool _isCoordinates(String query) {
-    final RegExp coordRegExp = RegExp(
-        r'^[-+]?([1-8]?\d(\.\d+)?|90(\.0+)?),\s*[-+]?(180(\.0+)?|((1[0-7]\d)|([1-9]?\d))(\.\d+)?)$');
+    final RegExp coordRegExp =
+        RegExp(r'^\s*([-+]?\d*\.?\d+)\s*[,\s]\s*([-+]?\d*\.?\d+)\s*$');
     return coordRegExp.hasMatch(query);
   }
 
+  // ==============================
+  // SEARCH FUNCTION
+  // ==============================
   Future<void> _search() async {
     final query = _controller.text.trim();
     if (query.isEmpty) return;
 
-    // 1. ถ้าเป็นพิกัด (Lat, Long) ให้ไปที่ตำแหน่งนั้นทันทีโดยไม่ผ่าน API
+    // --- 1) ถ้าเป็นพิกัด ---
     if (_isCoordinates(query)) {
-      final parts = query.split(RegExp(r'[,\s]+'));
-      final lat = double.tryParse(parts[0]);
-      final lng = double.tryParse(parts[1]);
-      if (lat != null && lng != null) {
-        widget.onGoToLocation(lat, lng);
-        setState(() => _results = []);
-        return;
+      final match = RegExp(
+              r'^\s*([-+]?\d*\.?\d+)\s*[,\s]\s*([-+]?\d*\.?\d+)\s*$')
+          .firstMatch(query);
+
+      if (match != null) {
+        final lat = double.tryParse(match.group(1)!);
+        final lng = double.tryParse(match.group(2)!);
+
+        if (lat != null && lng != null) {
+          widget.onGoToLocation(lat, lng);
+          _clearSearch();
+          return;
+        }
       }
     }
 
-    // 2. ถ้าเป็นชื่อสถานที่ ให้ค้นหาผ่าน API
+    // --- 2) ค้นหาผ่าน Photon ---
     setState(() => _loading = true);
 
     try {
-      // แนะนำให้ใช้ Google Places API หรือ Mapbox แทน OSM เพื่อป้องกันการโดน Block
-      // ในตัวอย่างนี้ผมปรับแต่ง URL ของ OSM ให้มีพารามิเตอร์ที่ลดโอกาสโดนแบนเบื้องต้น 
-      // แต่แนะนำให้สมัคร API Key ของ Mapbox/Google มาใส่แทนในอนาคตครับ
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search'
-        '?q=$query&format=json&limit=5&countrycodes=th&addressdetails=1',
-      );
+      final encodedQuery = Uri.encodeComponent(query);
 
-      final response = await http.get(
-        url,
-        headers: {
-          'User-Agent': 'RainForecast_App_Production_v1', // เปลี่ยนชื่อเพื่อเลี่ยงการ Block
-          'Accept-Language': 'th',
-        },
-      );
+      // จำกัดเฉพาะประเทศไทย + ภาษาไทย
+      final url = Uri.parse(
+          'https://photon.komoot.io/api/?q=$encodedQuery&limit=10&lang=th&osm_tag=place');
+
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+
         setState(() {
-          _results = json.decode(response.body);
+          _results = data['features'] ?? [];
           _loading = false;
         });
+
+        if (_results.isEmpty) {
+          _showError('ไม่พบสถานที่');
+        }
       } else {
-        throw Exception("API Error");
+        _showError('Server Error (${response.statusCode})');
+        setState(() => _loading = false);
       }
     } catch (e) {
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('การค้นหาขัดข้อง กรุณาลองใหม่หรือระบุเป็นพิกัด')),
-      );
+      _showError('การค้นหาขัดข้อง กรุณาลองใหม่');
     }
   }
 
-  void _selectPlace(dynamic place) {
-    final lat = double.parse(place['lat']);
-    final lon = double.parse(place['lon']);
-    widget.onGoToLocation(lat, lon);
+  // ==============================
+  void _selectPlace(dynamic feature) {
+    final List coords = feature['geometry']['coordinates'];
+    final double lng = coords[0].toDouble();
+    final double lat = coords[1].toDouble();
+
+    widget.onGoToLocation(lat, lng);
+    _clearSearch();
+  }
+
+  void _clearSearch() {
     setState(() => _results = []);
     _controller.clear();
     FocusScope.of(context).unfocus();
   }
 
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ==============================
+  // Debounce ป้องกันยิง API รัว
+  // ==============================
+  void _onChanged(String value) {
+    setState(() {});
+
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _search();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  // ==============================
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8)],
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 10, spreadRadius: 1)
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -102,38 +146,70 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
           TextField(
             controller: _controller,
             decoration: InputDecoration(
-              hintText: 'ค้นหาจังหวัด, อำเภอ หรือ พิกัด (lat, lng)',
-              prefixIcon: const Icon(Icons.location_on, color: Colors.blue),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: _search,
-              ),
+              hintText: 'ค้นหาหมู่บ้าน, อำเภอ หรือ พิกัด...',
+              prefixIcon:
+                  const Icon(Icons.search, color: Colors.blueAccent),
+              suffixIcon: _controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: _clearSearch,
+                    )
+                  : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 15),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 15),
             ),
             onSubmitted: (_) => _search(),
+            onChanged: _onChanged,
           ),
-          if (_loading) const LinearProgressIndicator(),
-          if (_results.isNotEmpty)
-            ListView.builder(
-              shrinkWrap: true,
-              itemCount: _results.length,
-              itemBuilder: (context, index) {
-                final place = _results[index];
-                final address = place['address'] ?? {};
-                // แสดงชื่อที่ละเอียดขึ้น (ตำบล, อำเภอ, จังหวัด)
-                final String displayName = [
-                  address['village'] ?? address['suburb'] ?? '',
-                  address['district'] ?? address['city_district'] ?? '',
-                  address['state'] ?? '',
-                ].where((s) => s.isNotEmpty).join(', ');
 
-                return ListTile(
-                  title: Text(place['display_name'].split(',')[0]),
-                  subtitle: Text(displayName.isNotEmpty ? displayName : place['display_name']),
-                  onTap: () => _selectPlace(place),
-                );
-              },
+          if (_loading)
+            const LinearProgressIndicator(height: 2),
+
+          if (_results.isNotEmpty)
+            ConstrainedBox(
+              constraints:
+                  const BoxConstraints(maxHeight: 350),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: _results.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final feature = _results[index];
+                  final props = feature['properties'];
+
+                  String title =
+                      props['name'] ?? 'ไม่ทราบชื่อ';
+
+                  List<String> subParts = [
+                    props['district'] ??
+                        props['city'] ??
+                        '',
+                    props['state'] ?? '',
+                    props['country'] ?? '',
+                  ]..removeWhere(
+                      (s) => s.isEmpty || s == title);
+
+                  return ListTile(
+                    leading: const Icon(
+                        Icons.location_on_outlined,
+                        color: Colors.redAccent),
+                    title: Text(title,
+                        style: const TextStyle(
+                            fontWeight:
+                                FontWeight.w600)),
+                    subtitle: Text(
+                      subParts.join(', '),
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                    ),
+                    onTap: () =>
+                        _selectPlace(feature),
+                  );
+                },
+              ),
             ),
         ],
       ),
