@@ -1,4 +1,4 @@
-package com.example.rainforecast_app
+package com.audomsub.rainforecast
 
 import io.flutter.embedding.android.FlutterActivity
 

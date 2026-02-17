@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:rainforecast_app/src/map/mainmap.dart';
 
 import '../login/login.dart';
-import 'package:rainforecast_app/src/map/mainmap.dart';
+import '../map/optionmap.dart';
 
 class MapWithLogin extends StatelessWidget {
   const MapWithLogin({super.key});
@@ -12,7 +13,7 @@ class MapWithLogin extends StatelessWidget {
       body: Stack(
         children: [
           ///  แผนที่
-          MainMap(searchText: ""),
+          const MainMap(),
 
           ///  ฉากมืดโปร่งใส
           Container(color: Colors.black.withOpacity(0.25)),
