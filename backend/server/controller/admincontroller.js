@@ -16,7 +16,7 @@ const supabase = createClient(
 let onlineUsers = new Map();
 
 /**
- * Track Online Device
+ * Track Online Device (รับ Heartbeat จาก App)
  */
 exports.trackOnline = (req, res) => {
     const { deviceId } = req.body || {}; 
@@ -27,12 +27,13 @@ exports.trackOnline = (req, res) => {
 };
 
 /**
- * Get Online Count
+ * Get Online Count (สำหรับตัวเลข Real-time)
  */
 exports.getOnlineCount = (req, res) => {
     const now = Date.now();
-    const timeout = 60 * 1000;
+    const timeout = 60 * 1000; // 1 นาที
 
+    // Clean up คนที่หายไปเกิน 1 นาที
     for (let [id, lastSeen] of onlineUsers) {
         if (now - lastSeen > timeout) onlineUsers.delete(id);
     }
@@ -41,25 +42,21 @@ exports.getOnlineCount = (req, res) => {
 };
 
 /**
- * Get Traffic Stats (ส่วนที่เพิ่มใหม่เพื่อแก้ Error)
+ * Get Traffic Stats (ดึงข้อมูลจริงจาก Supabase มาวาดกราฟ)
  */
-exports.getTrafficStats = (req, res) => {
-    // โค้ดตัวอย่างการส่งค่ากลับ (Mockup) ป้องกันโปรแกรม Crash
-    // คุณสามารถเขียน Logic จริงๆ เพิ่มเติมตรงนี้ได้
-    const now = Date.now();
-    const timeout = 60 * 1000;
-    
-    // Clean up old users first
-    for (let [id, lastSeen] of onlineUsers) {
-        if (now - lastSeen > timeout) onlineUsers.delete(id);
-    }
+exports.getTrafficStats = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('online_stats')
+            .select('timestamp, user_count')
+            .order('timestamp', { ascending: true })
+            .limit(24); // ดึงมา 24 จุดล่าสุด
 
-    res.status(200).json({ 
-        success: true,
-        message: "Traffic stats retrieved",
-        active_users: onlineUsers.size,
-        total_hits: onlineUsers.size // ตัวอย่างข้อมูล
-    });
+        if (error) throw error;
+        res.status(200).json(data);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 };
 
 /**
@@ -85,17 +82,28 @@ exports.loginAdmin = async (req, res) => {
             success: true,
             message: "Login successful",
             token: data.session.access_token,
-            refresh_token: data.session.refresh_token,
-            user: {
-                id: data.user.id,
-                email: data.user.email
-            }
+            user: { id: data.user.id, email: data.user.email }
         });
     } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: "Internal server error",
-            error: error.message 
-        });
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
+
+// ==========================================
+// 🚀 ระบบบันทึกสถิติอัตโนมัติ (หัวใจสำคัญของกราฟ)
+// ==========================================
+const saveTrafficToSupabase = async () => {
+    const count = onlineUsers.size;
+    const { error } = await supabase
+        .from('online_stats')
+        .insert([{ 
+            user_count: count, 
+            timestamp: new Date().toISOString() 
+        }]);
+
+    if (error) console.error("❌ Stats Sync Error:", error.message);
+    else console.log(`📊 Stats Saved: ${count} users`);
+};
+
+// บันทึกทุกๆ 10 นาที (ถ้าอยากให้กราฟละเอียดขึ้น ปรับลดตัวเลขได้ครับ)
+setInterval(saveTrafficToSupabase, 10 * 60 * 1000);

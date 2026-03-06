@@ -220,25 +220,35 @@ class DBService {
 
   // --- 4. สถิติและระบบ Online (Traffic Stats) ---
 
+  // ... โค้ดส่วนอื่นๆ ใน DBService เหมือนเดิม ...
+
+  // --- 4. สถิติและระบบ Online (Traffic Stats) ---
+
   Future<List<Map<String, dynamic>>> getTrafficStats() async {
     try {
-      final response = await _supabase
-          .from('online_stats')
-          .select('timestamp, user_count')
-          .order('timestamp', ascending: true);
-      
-      return (response as List).map((item) {
-        final time = DateTime.parse(item['timestamp']).toLocal();
-        return {
-          'timestamp': item['timestamp'],
-          'hour': time.hour.toString().padLeft(2, '0'),
-          'user_count': item['user_count'] ?? 0
-        };
-      }).toList();
+      // เปลี่ยนมาเรียกผ่าน API ของเราแทนการดึงตรง (เพื่อให้ได้ข้อมูลที่ Backend สรุปมาให้)
+      final url = Uri.parse('$backendUrl/admin/traffic-stats');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        
+        return data.map((item) {
+          final time = DateTime.parse(item['timestamp']).toLocal();
+          return {
+            'timestamp': item['timestamp'],
+            'hour': time.hour.toString().padLeft(2, '0'), // ใช้สำหรับแกน X ของกราฟ
+            'user_count': item['user_count'] ?? 0
+          };
+        }).toList();
+      }
     } catch (e) {
-      return [];
+      debugPrint("📊 Graph Data Error: $e");
     }
+    return []; // คืนค่าว่างถ้ามีปัญหา กราฟจะแสดงข้อความ Waiting...
   }
+
+// ... ฟังก์ชัน sendHeartbeat และ getOnlineCount เหมือนเดิม ...
 
   Future<void> sendHeartbeat(String deviceId) async {
     try {

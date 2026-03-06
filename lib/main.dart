@@ -93,38 +93,38 @@ class _HomepageState extends State<Homepage> {
           ),
 
           /// ---------------- LEFT BUTTONS (ซ้ายบน) ----------------
-          Positioned(
-            top: 150, // วางต่ำลงมาจาก Search Bar
-            left: 20,
-            child: LeftButtons(
-              onWeatherTap: () {
-                setState(() {
-                  _showWeatherPopup = !_showWeatherPopup;
-                  if (_showWeatherPopup) {
-                    _showLegend = false;
-                    _showAlertPopup = false;
-                  }
-                });
-              },
-              onNotificationTap: () {
-                setState(() {
-                  _showAlertPopup = !_showAlertPopup;
-                  if (_showAlertPopup) {
-                    _showLegend = false;
-                    _showWeatherPopup = false;
-                  }
-                });
-              },
-            ),
-          ),
+          // Positioned(
+          //   top: 150, // วางต่ำลงมาจาก Search Bar
+          //   left: 20,
+          //   child: LeftButtons(
+          //     onWeatherTap: () {
+          //       setState(() {
+          //         _showWeatherPopup = !_showWeatherPopup;
+          //         if (_showWeatherPopup) {
+          //           _showLegend = false;
+          //           _showAlertPopup = false;
+          //         }
+          //       });
+          //     },
+          //     onNotificationTap: () {
+          //       setState(() {
+          //         _showAlertPopup = !_showAlertPopup;
+          //         if (_showAlertPopup) {
+          //           _showLegend = false;
+          //           _showWeatherPopup = false;
+          //         }
+          //       });
+          //     },
+          //   ),
+          // ),
 
-          /// ---------------- LEGEND BAR (แถบล่าง) ----------------
-          const Positioned(
-            bottom: 40,
-            left: 20,
-            right: 20,
-            child: RainLegendBar(),
-          ),
+          // /// ---------------- LEGEND BAR (แถบล่าง) ----------------
+          // const Positioned(
+          //   bottom: 40,
+          //   left: 20,
+          //   right: 20,
+          //   child: RainLegendBar(),
+          // ),
 
           /// ---------------- POPUPS (แสดงซ้อนทับเมื่อเปิด) ----------------
           if (_showLegend)
