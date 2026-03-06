@@ -9,10 +9,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image/image.dart' as img; 
+import 'package:image/image.dart' as img;
 import '../service/db_service.dart';
 import 'optionmap.dart';
-import '../popup/alertPopup.dart'; 
+import '../popup/alertPopup.dart';
 
 class MainMap extends StatefulWidget {
   const MainMap({super.key});
@@ -60,7 +60,7 @@ class _MainMapState extends State<MainMap> {
     _fetchReports();
     _subscribeToRainReports();
     _checkLocationPermission();
-    
+
     // Listener เพื่ออัปเดต UI ปุ่มกากบาทเมื่อพิมพ์ข้อความ
     _searchController.addListener(() {
       setState(() {});
@@ -79,13 +79,13 @@ class _MainMapState extends State<MainMap> {
   // ==========================================
   // 🔍 SECTION: SEARCH LOGIC (ระบบค้นหา)
   // ==========================================
-  
+
   void _onSearchChanged(String value) {
     if (value.isEmpty) {
       setState(() => _searchResults = []);
       return;
     }
-    
+
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 800), () {
       _performSearch();
@@ -97,7 +97,9 @@ class _MainMapState extends State<MainMap> {
     if (query.isEmpty) return;
 
     // 1. ตรวจสอบพิกัด (Lat, Lng)
-    final RegExp coordRegExp = RegExp(r'^\s*([-+]?\d*\.?\d+)\s*[,\s]\s*([-+]?\d*\.?\d+)\s*$');
+    final RegExp coordRegExp = RegExp(
+      r'^\s*([-+]?\d*\.?\d+)\s*[,\s]\s*([-+]?\d*\.?\d+)\s*$',
+    );
     final match = coordRegExp.firstMatch(query);
 
     if (match != null) {
@@ -114,14 +116,16 @@ class _MainMapState extends State<MainMap> {
     setState(() => _isSearching = true);
     try {
       final encodedQuery = Uri.encodeComponent(query);
-      final url = Uri.parse('https://photon.komoot.io/api/?q=$encodedQuery&limit=5&lang=th');
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&limit=5&addressdetails=1',
+      );
 
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         setState(() {
-          _searchResults = data['features'] ?? [];
+          _searchResults = data;
           _isSearching = false;
         });
       } else {
@@ -135,8 +139,8 @@ class _MainMapState extends State<MainMap> {
 
   void _selectPlace(dynamic feature) {
     final List coords = feature['geometry']['coordinates'];
-    final double lng = coords[0].toDouble();
-    final double lat = coords[1].toDouble();
+    final double lat = double.parse(feature['lat']);
+    final double lng = double.parse(feature['lon']);
 
     _moveToLocation(lat, lng);
     _clearSearchResults();
@@ -173,7 +177,7 @@ class _MainMapState extends State<MainMap> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
     }
-    
+
     if (permission == LocationPermission.deniedForever) return;
 
     _handleCurrentLocation();
@@ -183,9 +187,11 @@ class _MainMapState extends State<MainMap> {
   void _startLocationStream() {
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 20, 
+      distanceFilter: 20,
     );
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen((
+      Position position,
+    ) {
       LatLng newLoc = LatLng(position.latitude, position.longitude);
       if (mounted) {
         setState(() => _currentLocation = newLoc);
@@ -196,7 +202,9 @@ class _MainMapState extends State<MainMap> {
 
   void _checkUserLocationInRain(LatLng userLocation) {
     if (_radarImageForLogic == null || _isAlertShowing) return;
-    if (_lastAlertTime != null && DateTime.now().difference(_lastAlertTime!).inMinutes < 5) return;
+    if (_lastAlertTime != null &&
+        DateTime.now().difference(_lastAlertTime!).inMinutes < 5)
+      return;
     if (!_radarBounds.contains(userLocation)) return;
 
     double latRange = _radarBounds.north - _radarBounds.south;
@@ -207,22 +215,25 @@ class _MainMapState extends State<MainMap> {
     int pixelX = (xRatio * _radarImageForLogic!.width).round();
     int pixelY = (yRatio * _radarImageForLogic!.height).round();
 
-    if (pixelX < 0 || pixelX >= _radarImageForLogic!.width || 
-        pixelY < 0 || pixelY >= _radarImageForLogic!.height) return;
+    if (pixelX < 0 ||
+        pixelX >= _radarImageForLogic!.width ||
+        pixelY < 0 ||
+        pixelY >= _radarImageForLogic!.height)
+      return;
 
     img.Pixel pixel = _radarImageForLogic!.getPixel(pixelX, pixelY);
 
     if (_isRainPixel(pixel)) {
-       double intensity = 0.5;
-       String rainLevel = "Moderate Rain";
-       if (pixel.r > 200 && pixel.g < 100) {
-         intensity = 0.9;
-         rainLevel = "Heavy Rain";
-       } else if (pixel.g > 200 && pixel.r < 150) {
-         intensity = 0.3;
-         rainLevel = "Light Rain";
-       }
-       _triggerRainAlert(intensity, rainLevel);
+      double intensity = 0.5;
+      String rainLevel = "Moderate Rain";
+      if (pixel.r > 200 && pixel.g < 100) {
+        intensity = 0.9;
+        rainLevel = "Heavy Rain";
+      } else if (pixel.g > 200 && pixel.r < 150) {
+        intensity = 0.3;
+        rainLevel = "Light Rain";
+      }
+      _triggerRainAlert(intensity, rainLevel);
     }
   }
 
@@ -240,7 +251,7 @@ class _MainMapState extends State<MainMap> {
             Navigator.of(context).pop();
             if (mounted) setState(() => _isAlertShowing = false);
           },
-          address: "ตำแหน่งปัจจุบันของคุณ", 
+          address: "ตำแหน่งปัจจุบันของคุณ",
           intensity: intensity,
           probability: (intensity * 100).toInt(),
         );
@@ -257,8 +268,14 @@ class _MainMapState extends State<MainMap> {
     double kmPerLngDegree = 111.0 * cos(_radarCenter.latitude * pi / 180);
     double deltaLng = radiusKm / kmPerLngDegree;
     _radarBounds = LatLngBounds(
-      LatLng((_radarCenter.latitude - deltaLat) + latOffset, (_radarCenter.longitude - deltaLng) - lngOffset),
-      LatLng((_radarCenter.latitude + deltaLat) + latOffset, (_radarCenter.longitude + deltaLng) - lngOffset),
+      LatLng(
+        (_radarCenter.latitude - deltaLat) + latOffset,
+        (_radarCenter.longitude - deltaLng) - lngOffset,
+      ),
+      LatLng(
+        (_radarCenter.latitude + deltaLat) + latOffset,
+        (_radarCenter.longitude + deltaLng) - lngOffset,
+      ),
     );
   }
 
@@ -276,7 +293,7 @@ class _MainMapState extends State<MainMap> {
             if (mounted && processed != null) {
               setState(() {
                 _processedRadarBytes = processed;
-                _radarImageForLogic = img.decodeImage(processed); 
+                _radarImageForLogic = img.decodeImage(processed);
               });
             }
           }
@@ -291,7 +308,13 @@ class _MainMapState extends State<MainMap> {
     img.Image? original = img.decodeImage(bytes);
     if (original == null) return null;
 
-    img.Image cropped = img.copyCrop(original, x: 0, y: 0, width: 800, height: 800);
+    img.Image cropped = img.copyCrop(
+      original,
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 800,
+    );
     img.Image masked = img.Image(width: 800, height: 800, numChannels: 4);
 
     final centerX = cropped.width / 2;
@@ -303,12 +326,19 @@ class _MainMapState extends State<MainMap> {
         final dx = x - centerX;
         final dy = y - centerY;
         if (dx * dx + dy * dy > radiusSquared) {
-           masked.setPixelRgba(x, y, 0, 0, 0, 0); 
-           continue;
+          masked.setPixelRgba(x, y, 0, 0, 0, 0);
+          continue;
         }
         final pixel = cropped.getPixel(x, y);
         if (_isRainPixel(pixel)) {
-          masked.setPixelRgba(x, y, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt(), 210);
+          masked.setPixelRgba(
+            x,
+            y,
+            pixel.r.toInt(),
+            pixel.g.toInt(),
+            pixel.b.toInt(),
+            210,
+          );
         } else {
           masked.setPixelRgba(x, y, 0, 0, 0, 0);
         }
@@ -324,9 +354,14 @@ class _MainMapState extends State<MainMap> {
     if (pixel.a == 0) return false;
     final maxVal = max(r, max(g, b));
     final minVal = min(r, min(g, b));
-    if ((maxVal - minVal) < 60) return false; 
-    if (r > g) { if (g > 80) return false; }
-    if (g > r) { if ((g - r) < 70) return false; if (g < 130) return false; }
+    if ((maxVal - minVal) < 60) return false;
+    if (r > g) {
+      if (g > 80) return false;
+    }
+    if (g > r) {
+      if ((g - r) < 70) return false;
+      if (g < 130) return false;
+    }
     bool isGreenRain = (g > 140) && (g > r + 70) && (g > b + 70);
     bool isYellowRain = (r > 150 && g > 150 && b < 80);
     bool isRedRain = (r > 150 && g < 80 && b < 80);
@@ -335,12 +370,18 @@ class _MainMapState extends State<MainMap> {
 
   void _handleZoomIn() {
     double currentZoom = _mapController.camera.zoom;
-    _mapController.move(_mapController.camera.center, min(currentZoom + 1, 15.0));
+    _mapController.move(
+      _mapController.camera.center,
+      min(currentZoom + 1, 15.0),
+    );
   }
 
   void _handleZoomOut() {
     double currentZoom = _mapController.camera.zoom;
-    _mapController.move(_mapController.camera.center, max(currentZoom - 1, 4.0));
+    _mapController.move(
+      _mapController.camera.center,
+      max(currentZoom - 1, 4.0),
+    );
   }
 
   Future<void> _handleCurrentLocation() async {
@@ -358,10 +399,15 @@ class _MainMapState extends State<MainMap> {
   }
 
   void _subscribeToRainReports() {
-    _rainChannel = Supabase.instance.client.channel('public:rain_reports').onPostgresChanges(
-        event: PostgresChangeEvent.insert, schema: 'public', table: 'rain_reports',
-        callback: (payload) => _fetchReports(),
-      ).subscribe();
+    _rainChannel = Supabase.instance.client
+        .channel('public:rain_reports')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'rain_reports',
+          callback: (payload) => _fetchReports(),
+        )
+        .subscribe();
   }
 
   Future<void> _fetchReports() async {
@@ -376,16 +422,17 @@ class _MainMapState extends State<MainMap> {
       children: [
         // ------------------ LAYER 1: MAP ------------------
         FlutterMap(
-          mapController: _mapController, 
+          mapController: _mapController,
           options: MapOptions(
             initialCenter: const LatLng(13.7563, 100.5018),
             initialZoom: 6.0,
-            minZoom: 4.0,  
-            maxZoom: 15.0, 
+            minZoom: 4.0,
+            maxZoom: 15.0,
             onTap: (_, __) {
-              if (_searchResults.isNotEmpty || _searchController.text.isNotEmpty) {
-                 _clearSearchResults();
-                 FocusScope.of(context).unfocus();
+              if (_searchResults.isNotEmpty ||
+                  _searchController.text.isNotEmpty) {
+                _clearSearchResults();
+                FocusScope.of(context).unfocus();
               }
             },
           ),
@@ -399,7 +446,7 @@ class _MainMapState extends State<MainMap> {
                 overlayImages: [
                   OverlayImage(
                     bounds: _radarBounds,
-                    opacity: 0.85, 
+                    opacity: 0.85,
                     imageProvider: MemoryImage(_processedRadarBytes!),
                   ),
                 ],
@@ -408,7 +455,8 @@ class _MainMapState extends State<MainMap> {
               markers: _rainReports.map((report) {
                 return Marker(
                   point: LatLng(report['latitude'], report['longitude']),
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   child: Icon(Icons.cloud, color: Color(report['color_value'])),
                 );
               }).toList(),
@@ -418,8 +466,13 @@ class _MainMapState extends State<MainMap> {
                 markers: [
                   Marker(
                     point: _currentLocation!,
-                    width: 60, height: 60,
-                    child: const Icon(Icons.my_location, color: Colors.blueAccent, size: 30),
+                    width: 60,
+                    height: 60,
+                    child: const Icon(
+                      Icons.my_location,
+                      color: Colors.blueAccent,
+                      size: 30,
+                    ),
                   ),
                 ],
               ),
@@ -435,7 +488,7 @@ class _MainMapState extends State<MainMap> {
         Positioned(
           top: 60,
           left: 20,
-          right: 90, 
+          right: 90,
           child: Column(
             children: [
               Container(
@@ -443,7 +496,11 @@ class _MainMapState extends State<MainMap> {
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
-                    BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 5)),
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
                   ],
                 ),
                 child: TextField(
@@ -456,12 +513,16 @@ class _MainMapState extends State<MainMap> {
                         ? const Padding(
                             padding: EdgeInsets.all(12.0),
                             child: SizedBox(
-                              width: 20, height: 20,
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           )
-                        : const Icon(Icons.location_on_rounded, color: Color(0xFF6C63FF)),
-                    
+                        : const Icon(
+                            Icons.location_on_rounded,
+                            color: Color(0xFF6C63FF),
+                          ),
+
                     // ✅✅✅ ส่วนปุ่ม SUBMIT และ CLEAR ✅✅✅
                     suffixIcon: Padding(
                       padding: const EdgeInsets.only(right: 8.0),
@@ -480,22 +541,30 @@ class _MainMapState extends State<MainMap> {
                               shape: BoxShape.circle,
                             ),
                             child: IconButton(
-                              icon: const Icon(Icons.search, color: Colors.white, size: 20),
-                              onPressed: _performSearch, // กดปุ่มนี้จะค้นหาทันที
+                              icon: const Icon(
+                                Icons.search,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              onPressed:
+                                  _performSearch, // กดปุ่มนี้จะค้นหาทันที
                             ),
                           ),
                         ],
                       ),
                     ),
-                    
+
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 15,
+                      horizontal: 20,
+                    ),
                   ),
                   onChanged: _onSearchChanged,
                   onSubmitted: (_) => _performSearch(),
                 ),
               ),
-              
+
               // ผลการค้นหา (Dropdown List)
               if (_searchResults.isNotEmpty)
                 Container(
@@ -504,7 +573,9 @@ class _MainMapState extends State<MainMap> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black26, blurRadius: 10),
+                    ],
                   ),
                   child: ListView.separated(
                     padding: EdgeInsets.zero,
@@ -514,7 +585,7 @@ class _MainMapState extends State<MainMap> {
                     itemBuilder: (context, index) {
                       final feature = _searchResults[index];
                       final props = feature['properties'];
-                      String title = props['name'] ?? 'ไม่ทราบชื่อ';
+                      String title = feature['display_name'] ?? 'ไม่ทราบชื่อ';
                       List<String> subParts = [
                         props['district'] ?? '',
                         props['city'] ?? '',
@@ -524,9 +595,18 @@ class _MainMapState extends State<MainMap> {
 
                       return ListTile(
                         dense: true,
-                        leading: const Icon(Icons.place, color: Colors.grey, size: 20),
-                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: subParts.isNotEmpty ? Text(subParts.join(', ')) : null,
+                        leading: const Icon(
+                          Icons.place,
+                          color: Colors.grey,
+                          size: 20,
+                        ),
+                        title: Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: subParts.isNotEmpty
+                            ? Text(subParts.join(', '))
+                            : null,
                         onTap: () => _selectPlace(feature),
                       );
                     },
