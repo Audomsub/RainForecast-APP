@@ -96,15 +96,17 @@ class _MainMapState extends State<MainMap> {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
 
-    // 1. ตรวจสอบพิกัด (Lat, Lng)
+    // 1️⃣ ตรวจสอบว่าเป็นพิกัดหรือไม่
     final RegExp coordRegExp = RegExp(
       r'^\s*([-+]?\d*\.?\d+)\s*[,\s]\s*([-+]?\d*\.?\d+)\s*$',
     );
+
     final match = coordRegExp.firstMatch(query);
 
     if (match != null) {
       final lat = double.tryParse(match.group(1)!);
       final lng = double.tryParse(match.group(2)!);
+
       if (lat != null && lng != null) {
         _moveToLocation(lat, lng);
         _clearSearchResults();
@@ -112,22 +114,35 @@ class _MainMapState extends State<MainMap> {
       }
     }
 
-    // 2. ค้นหาชื่อสถานที่ (Photon API)
+    // 2️⃣ ค้นหาชื่อสถานที่
     setState(() => _isSearching = true);
+
     try {
       final encodedQuery = Uri.encodeComponent(query);
+
       final url = Uri.parse(
         'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&limit=5&addressdetails=1',
       );
 
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'RainForecastApp'},
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
-        setState(() {
-          _searchResults = data;
-          _isSearching = false;
-        });
+
+        if (data is List) {
+          setState(() {
+            _searchResults = data;
+            _isSearching = false;
+          });
+        } else {
+          setState(() {
+            _searchResults = [];
+            _isSearching = false;
+          });
+        }
       } else {
         setState(() => _isSearching = false);
       }
@@ -497,8 +512,39 @@ class _MainMapState extends State<MainMap> {
                 ),
                 child: TextField(
                   controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  onSubmitted: (_) => _performSearch(),
+
+                  decoration: InputDecoration(
+                    hintText: 'ค้นหาสถานที่...',
+                    prefixIcon: const Icon(Icons.location_on),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: _clearSearchText,
+                          ),
+
+                        IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: _performSearch,
+                        ),
+                      ],
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 15,
+                      horizontal: 20,
+                    ),
+                  ),
+
+                  onChanged: (value) {
+                    setState(() {}); // refresh UI ให้ปุ่มแสดง
+                  },
+
+                  onSubmitted: (_) {
+                    _performSearch(); // กด Enter แล้วค้นหา
+                  },
                 ),
               ),
 
