@@ -138,13 +138,12 @@ class _MainMapState extends State<MainMap> {
   }
 
   void _selectPlace(dynamic feature) {
-    final List coords = feature['geometry']['coordinates'];
     final double lat = double.parse(feature['lat']);
-    final double lng = double.parse(feature['lon']);
+    final double lon = double.parse(feature['lon']);
 
-    _moveToLocation(lat, lng);
+    _moveToLocation(lat, lon);
     _clearSearchResults();
-    FocusScope.of(context).unfocus(); // ซ่อนคีย์บอร์ด
+    FocusScope.of(context).unfocus();
   }
 
   void _moveToLocation(double lat, double lng) {
@@ -495,77 +494,14 @@ class _MainMapState extends State<MainMap> {
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
                 ),
                 child: TextField(
                   controller: _searchController,
-                  style: const TextStyle(color: Colors.black87),
-                  decoration: InputDecoration(
-                    hintText: 'ค้นหาตำบล, อำเภอ, จังหวัด...',
-                    hintStyle: const TextStyle(color: Colors.grey),
-                    prefixIcon: _isSearching
-                        ? const Padding(
-                            padding: EdgeInsets.all(12.0),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.location_on_rounded,
-                            color: Color(0xFF6C63FF),
-                          ),
-
-                    // ✅✅✅ ส่วนปุ่ม SUBMIT และ CLEAR ✅✅✅
-                    suffixIcon: Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_searchController.text.isNotEmpty)
-                            IconButton(
-                              icon: const Icon(Icons.close, color: Colors.grey),
-                              onPressed: _clearSearchText,
-                            ),
-                          // ปุ่ม Submit สีม่วง
-                          Container(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF6C63FF),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.search,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              onPressed:
-                                  _performSearch, // กดปุ่มนี้จะค้นหาทันที
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 15,
-                      horizontal: 20,
-                    ),
-                  ),
                   onChanged: _onSearchChanged,
                   onSubmitted: (_) => _performSearch(),
                 ),
               ),
 
-              // ผลการค้นหา (Dropdown List)
               if (_searchResults.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(top: 10),
@@ -573,41 +509,26 @@ class _MainMapState extends State<MainMap> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black26, blurRadius: 10),
-                    ],
                   ),
                   child: ListView.separated(
-                    padding: EdgeInsets.zero,
                     shrinkWrap: true,
                     itemCount: _searchResults.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final feature = _searchResults[index];
-                      final props = feature['properties'];
+
                       String title = feature['display_name'] ?? 'ไม่ทราบชื่อ';
-                      List<String> subParts = [
-                        props['district'] ?? '',
-                        props['city'] ?? '',
-                        props['state'] ?? '',
-                      ];
-                      subParts.removeWhere((s) => s.isEmpty || s == title);
+                      double lat = double.parse(feature['lat']);
+                      double lon = double.parse(feature['lon']);
 
                       return ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.place,
-                          color: Colors.grey,
-                          size: 20,
-                        ),
-                        title: Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: subParts.isNotEmpty
-                            ? Text(subParts.join(', '))
-                            : null,
-                        onTap: () => _selectPlace(feature),
+                        leading: const Icon(Icons.place),
+                        title: Text(title),
+                        onTap: () {
+                          _moveToLocation(lat, lon);
+                          _clearSearchResults();
+                          FocusScope.of(context).unfocus();
+                        },
                       );
                     },
                   ),
